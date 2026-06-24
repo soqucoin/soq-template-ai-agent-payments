@@ -12,7 +12,7 @@
   "keywords": ["soqucoin", "lightning", "micropayments", "ai-agents", "post-quantum"],
   "license": "MIT",
   "dependencies": {
-    "soq-lightning-sdk": "^0.1.0-alpha.0",
+    "soq-lightning-sdk": "^0.1.0-alpha.1",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
