@@ -15,7 +15,7 @@ That runs the demo in LOCAL simulation, no network required, so you can see the 
 
 ```bash
 cp .env.example .env
-# edit .env and set LSP_URL=https://lightning.soqupool.com
+# edit .env and set LSP_URL=https://lsp.soqu.org
 npm start
 ```
 
