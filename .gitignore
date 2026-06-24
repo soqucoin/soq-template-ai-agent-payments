@@ -1,3 +1,6 @@
 node_modules/
 dist/
 .env
+# Not committed: in this monorepo layout npm resolves the SDK to a local sibling path,
+# which would break a builder's clone. Fresh clones install the latest in the caret range.
+package-lock.json
