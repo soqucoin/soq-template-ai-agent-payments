@@ -1,0 +1,22 @@
+{
+  "name": "soq-template-ai-agent-payments",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI agent micropayments on Soqucoin Lightning. A Builders League starter template: pay-per-inference over a post-quantum payment channel.",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsc && node dist/demo.js",
+    "demo": "npm start"
+  },
+  "keywords": ["soqucoin", "lightning", "micropayments", "ai-agents", "post-quantum"],
+  "license": "MIT",
+  "dependencies": {
+    "soq-lightning-sdk": "^0.1.0-alpha.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0"
+  }
+}
