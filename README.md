@@ -76,4 +76,8 @@ This template targets the current stagenet SDK (v0.1.0-alpha), which settles sin
 - Add pay-on-delivery with hash-locked (HTLC) payments, so the service only gets paid when it returns a valid result.
 - Meter by real token counts from your model's usage data.
 
+## Legal
+
+This template is provided for educational use on a test network, "AS IS" and without warranty, under the MIT License. It is a technical illustration, not a recommendation to pursue any particular business or use case, and it is not legal, financial, or tax advice. You are solely responsible for ensuring that anything you build with it complies with all applicable laws and regulations, including securities, money-transmission/MSB, AML/KYC, sanctions, tax, consumer-protection, and data-privacy laws. Some use cases are heavily regulated and may require licensing. Obtain your own legal advice before launching. See the Builders League terms: https://soqu.org/terms
+
 Build something with this and apply to the Builders League at soqu.org/build/apply.
