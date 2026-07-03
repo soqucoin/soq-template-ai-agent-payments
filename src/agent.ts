@@ -105,6 +105,42 @@ export class PayPerCallAgent {
     };
   }
 
+  /**
+   * Bill another agent: create an LSP invoice for a unit of work and hand back
+   * its `soqln:` URI. The payer settles it with payInvoice(); this agent's
+   * channel balance grows when it does (custodial hub-hop on the hosted beta).
+   * LIVE mode only — LOCAL simulation has no counterparty to bill.
+   */
+  async bill(amountSat: number, memo = ""): Promise<{ invoiceId: string; uri: string }> {
+    if (!this.live) throw new Error("billing requires LIVE mode (pass an lspUrl)");
+    if (!Number.isInteger(amountSat) || amountSat <= 0) {
+      throw new Error("amount must be a positive integer number of satoshis");
+    }
+    const inv = await this.ln!.createInvoice(this.channelId!, amountSat, { memo });
+    return { invoiceId: inv.invoice_id, uri: inv.uri };
+  }
+
+  /** Settle another agent's `soqln:` invoice from this agent's channel. */
+  async payInvoice(uri: string): Promise<PaymentResult> {
+    if (!this.live) throw new Error("invoice settlement requires LIVE mode (pass an lspUrl)");
+    const id = SoqLightning.parseInvoiceUri(uri);
+    if (!id) throw new Error(`not a soqln: invoice URI: ${uri.slice(0, 24)}…`);
+    const { channel, invoice } = await this.ln!.payInvoice(id, this.channelId!);
+    return {
+      amountSat: invoice.amount_sat,
+      remainingSat: channel.initiator_balance_sat,
+      stateIndex: channel.state_index,
+      live: true,
+    };
+  }
+
+  /** Wait for an invoice this agent issued to settle (paid or expired). */
+  async awaitPaid(invoiceId: string, timeoutMs = 60_000): Promise<boolean> {
+    if (!this.live) throw new Error("billing requires LIVE mode (pass an lspUrl)");
+    const inv = await this.ln!.awaitInvoicePaid(invoiceId, { timeoutMs });
+    return inv.status === "paid";
+  }
+
   /** Current spendable balance in satoshis. */
   async balanceSat(): Promise<number> {
     if (!this.live) return this.localBalance;

@@ -66,9 +66,31 @@ Replace `mockInference()` in `src/demo.ts` with a real model or API call, and se
 - Device-to-device and IoT micropayments.
 - Pay-on-delivery, where payment only releases when the work is verifiably done (uses the SDK's HTLC layer; see "What is next").
 
+## Agents billing agents (LIVE mode)
+
+An agent can now get PAID, not just pay. `bill()` creates an LSP invoice and hands
+back its `soqln:` URI; the counterparty settles it with `payInvoice()` and the
+biller's channel balance grows:
+
+```ts
+// worker agent invoices for a completed job
+const { invoiceId, uri } = await worker.bill(5_000, "inference batch #42");
+
+// hiring agent settles it (URI can travel over any channel — HTTP, queue, QR)
+await hirer.payInvoice(uri);
+
+// worker confirms settlement before releasing the result
+if (await worker.awaitPaid(invoiceId)) deliver();
+```
+
+Settlement is custodial on the hosted beta: the LSP hub atomically debits the
+payer's channel and credits the biller's. This is the request-to-pay half of
+agent-to-agent commerce, live today; trust-minimized multi-hop settlement is the
+HTLC layer below.
+
 ## The honest boundary
 
-This template targets the current stagenet SDK (v0.1.0-alpha), which settles single-hop payments between an agent and the Lightning service provider. True agent-to-agent routing across the network uses the SDK's HTLC and routing layer, which is built at the construction level and lights up as the forwarding endpoints ship. The LOCAL simulation mode is a teaching aid: it exercises the metering and balance logic without touching the network, and is clearly labelled as a simulation in the output. For real payments, point it at the stagenet LSP.
+This template targets the current stagenet SDK (v0.1.0-alpha), which settles single-hop payments between an agent and the Lightning service provider — including agent-to-agent invoices, which the LSP hub settles custodially. True agent-to-agent routing across the network uses the SDK's HTLC and routing layer, which is built at the construction level and lights up as the forwarding endpoints ship. The LOCAL simulation mode is a teaching aid: it exercises the metering and balance logic without touching the network, and is clearly labelled as a simulation in the output. For real payments, point it at the stagenet LSP.
 
 ## What is next
 
