@@ -84,7 +84,12 @@ if (await worker.awaitPaid(invoiceId)) deliver();
 ```
 
 Settlement is custodial on the hosted beta: the LSP hub atomically debits the
-payer's channel and credits the biller's. This is the request-to-pay half of
+payer's channel and credits the biller's.
+
+> Running TWO live agents on one machine: `PayPerCallAgent.create` funds via the
+> stagenet faucet, which allows one drip per IP per 10 minutes — stagger the two
+> creates, or open the second agent's channel directly with the SDK's
+> `ln.openChannel(...)` (no faucet, instant). This is the request-to-pay half of
 agent-to-agent commerce, live today; trust-minimized multi-hop settlement is the
 HTLC layer below.
 
