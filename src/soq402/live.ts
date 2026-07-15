@@ -207,7 +207,7 @@ async function main(): Promise<void> {
       budgetSat: 50_000_000,
       bus,
     });
-    bus.emit({ type: "status", text: "live rig up: ada + bit selling and buying" });
+    bus.emit({ type: "status", text: `live rig up: ${ada.name} + ${bit.name} selling and buying` });
     return { ada, bit, sellerAda, sellerBit, buyerAda, buyerBit, transcript: [] };
   }
 
