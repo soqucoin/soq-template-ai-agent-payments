@@ -10,8 +10,9 @@
 import "dotenv/config";
 import { PayPerCallAgent } from "./agent.js";
 
-// Price the service charges per output token, in satoshis. 1 SOQ = 100,000,000 sat,
-// so 100 sat per token is 0.000001 SOQ per token. Set your own price.
+// Price the service charges per output token, in shors (Soqucoin's satoshi).
+// 1 SOQ = 100,000,000 shors, so 100 shors per token is 0.000001 SOQ per token.
+// Set your own price.
 const PRICE_PER_TOKEN_SAT = 100;
 
 // Stand-in for a real AI service. Replace this with an actual model or API call.
@@ -56,14 +57,14 @@ async function main(): Promise<void> {
     console.log(`> ${prompt}`);
     console.log(`  ${response}`);
     console.log(
-      `  paid ${costSat} sat for ${tokens} tokens` +
-        `  |  balance ${r.remainingSat} sat` +
+      `  paid ${costSat} shors for ${tokens} tokens` +
+        `  |  balance ${r.remainingSat} shors` +
         `  |  state ${r.stateIndex === -1 ? "(local)" : r.stateIndex}\n`,
     );
   }
 
-  console.log(`Total paid: ${totalPaidSat} sat across ${prompts.length} calls.`);
-  console.log(`Remaining balance: ${await client.balanceSat()} sat.`);
+  console.log(`Total paid: ${totalPaidSat} shors across ${prompts.length} calls.`);
+  console.log(`Remaining balance: ${await client.balanceSat()} shors.`);
   await client.close();
   console.log(lspUrl ? "Channel closed and settled on L1." : "Done (no channel to close in local mode).");
 }

@@ -28,7 +28,7 @@ A client agent calls a service that charges per output token and pays for each c
 ```
 > Summarize the post-quantum threat in one line.
   Echo: ... this is where your model's response goes.
-  paid 900 sat for 9 tokens  |  balance 999999100 sat  |  state 1
+  paid 900 shors for 9 tokens  |  balance 999999100 shors  |  state 1
 ```
 
 ## How it works
@@ -55,7 +55,7 @@ Under the hood that wraps the Soqucoin Lightning SDK:
 - `ln.pay(channelId, amountSat)` settles a payment in a single state update. This is the micropayment.
 - `ln.channel(id)` and `ln.close(id)` read state and settle on L1.
 
-Amounts are always in satoshis. 1 SOQ is 100,000,000 satoshis.
+Amounts are always in shors, Soqucoin's satoshi: 1 SOQ is 100,000,000 shors. (The SDK's field names use the familiar `sat` suffix; a shor is the same unit.)
 
 ## Make it yours
 
@@ -92,6 +92,29 @@ HTLC layer below.
 > stagenet faucet, which allows one drip per IP per 10 minutes — stagger the two
 > creates, or open the second agent's channel directly with the SDK's
 > `ln.openChannel(...)` (no faucet, instant).
+
+## SOQ-402: the full loop, live
+
+`npm run soq402` runs the whole machine-to-machine economy this template exists for. Two autonomous agents, Ada and Bit, each sell their intelligence behind a metered gateway and buy the other's, one micropayment per message:
+
+1. **A metered AI service.** An HTTP gateway wraps any OpenAI-compatible endpoint. An unpaid request gets `402 Payment Required` plus a Lightning invoice. A paid request gets the inference plus a post-quantum (ML-DSA-44) signed receipt binding the payment to the exact request and response. Each invoice unlocks exactly one inference; the payment is the authentication.
+2. **An autonomous buyer.** Its own PQ wallet and channel. It catches the 402, checks the invoice against its spend guards (per-call cap, session budget, pinned seller key), pays it in-flight, retries, and verifies the receipt. Refusal is the feature: budget escapes are rejected, not negotiated.
+3. **A live console.** Run with `SOQ402_HOLD=1` and open http://localhost:4020/ to watch the split screen: the conversation on one side, the payment meter on the other, invoices settling in a couple hundred milliseconds.
+
+```bash
+npm run soq402                      # built-in mock models, real payments
+XAI_API_KEY=... npm run soq402      # bill for real Grok inference
+```
+
+Set two different vendors' keys (see `.env.example`) and the agents converse across vendors, each paying the other's gateway per message. To meter YOUR model, this is the whole integration:
+
+```bash
+UPSTREAM_BASE_URL=https://your-api.example.com/v1
+UPSTREAM_API_KEY=...
+UPSTREAM_MODEL=your-model
+```
+
+This demo is 402-native (HTTP 402 plus `soqln:` invoices); it does not implement the x402 protocol.
 
 ## The honest boundary
 
