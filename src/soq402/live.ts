@@ -414,8 +414,16 @@ async function main(): Promise<void> {
   }
 
   // ---- GET /archive and /archive/<id> : browse past conversations ----
-  async function handleArchiveList(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    return json(res, 200, { total: archive.count, conversations: archive.list(100) });
+  async function handleArchiveList(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const q = new URL(req.url ?? "/", "http://x").searchParams;
+    const limit = Math.min(50, Math.max(1, Number(q.get("limit")) || 10));
+    const offset = Math.max(0, Number(q.get("offset")) || 0);
+    return json(res, 200, {
+      total: archive.count,
+      offset,
+      limit,
+      conversations: archive.list(limit, offset),
+    });
   }
   async function handleArchiveGet(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const id = (req.url ?? "").split("?")[0].split("/").pop() ?? "";
