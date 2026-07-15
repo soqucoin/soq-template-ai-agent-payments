@@ -68,9 +68,11 @@ export class ArchiveStore {
     writeFileSync(join(this.dir, "index.json"), JSON.stringify(this.index));
   }
 
-  /** Newest-first summaries. */
-  list(limit = 100): ConversationSummary[] {
-    return this.index.slice(-limit).reverse();
+  /** Newest-first summaries, paged: offset 0 is the most recent. */
+  list(limit = 10, offset = 0): ConversationSummary[] {
+    const end = Math.max(0, this.index.length - offset);
+    const start = Math.max(0, end - limit);
+    return this.index.slice(start, end).reverse();
   }
 
   get(id: string): Conversation | null {

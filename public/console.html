@@ -150,6 +150,12 @@ main{display:grid;grid-template-columns:minmax(0,7fr) minmax(340px,5fr);gap:0;al
 .arc:hover{color:var(--text)}
 .arc .when{color:var(--faint)}
 .arc .amt{color:var(--ember)}
+#archive-pager{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-top:.7rem;
+  font-family:var(--mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+#archive-pager button{background:transparent;border:1px solid var(--line-strong);color:var(--dim);
+  font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .7rem;cursor:pointer}
+#archive-pager button:hover:not(:disabled){color:var(--text);border-color:var(--ember)}
+#archive-pager button:disabled{opacity:.35;cursor:default}
 
 /* verifier */
 #verify-card textarea{width:100%;height:5rem;background:var(--console);border:1px solid var(--line-strong);
@@ -245,6 +251,11 @@ footer a:hover{color:var(--text)}
     <div class="panel hidden" id="archive-card">
       <div class="k">Archive · <span id="archive-total">0</span> conversations</div>
       <div id="archive-list"></div>
+      <div id="archive-pager">
+        <button id="arc-newer" disabled>&#8249; newer</button>
+        <span id="arc-range"></span>
+        <button id="arc-older" disabled>older &#8250;</button>
+      </div>
     </div>
   </aside>
 </main>
@@ -360,18 +371,25 @@ function onEvent(e) {
   } else if (e.type === "schedule") {
     nextAmbientAt = new Date(e.next_ambient_at).getTime();
     // A schedule after a live conversation means a fresh archive entry exists.
-    if (liveMode && !$("archive-card").classList.contains("hidden")) loadArchive();
+    // Only refresh when the reader is on the newest page, so paging back
+    // through history is never yanked out from under them.
+    if (liveMode && arcOffset === 0 && !$("archive-card").classList.contains("hidden")) loadArchive();
   } else if (e.type === "message") {
     if (e.paid_sat > 0) msgs += 1;
     aggregate();
     if (e.receipt) receipts.set(e.seq, e.receipt);
     if (e.from !== "visitor" && !firstSpeaker) firstSpeaker = e.from;
-    // The live pane shows ONE conversation at a time: an opener (an agent's
-    // topic or a visitor's question) clears the finished exchange, which is
-    // already in the archive. This also collapses the SSE backfill down to
-    // just the newest conversation on page load.
-    if (e.paid_sat === 0 && $("conv").children.length) $("conv").innerHTML = "";
     $("conv").insertAdjacentHTML("beforeend", txHtml(e, e.receipt ? e.seq : null, firstSpeaker));
+    // The live pane keeps the LAST TWO conversations; anything older is
+    // already in the archive. Openers (agent topics and visitor questions)
+    // mark the boundaries, so page-load backfill collapses the same way.
+    const openers = $("conv").querySelectorAll(".tx-opener");
+    if (openers.length > 2) {
+      const keepFrom = openers[openers.length - 2];
+      while ($("conv").firstChild && $("conv").firstChild !== keepFrom) {
+        $("conv").removeChild($("conv").firstChild);
+      }
+    }
     // Backstop for pathological streams with no opener in sight.
     while ($("conv").children.length > 80) $("conv").removeChild($("conv").firstChild);
     // Follow the conversation only for live arrivals, and only if the reader
@@ -410,8 +428,9 @@ function txHtml(m, seq, first) {
         ? "a visitor&#39;s question · the answer below is paid for by an agent"
         : "conversation opener · unpaid";
   const verb = m.from === "visitor" ? "asks" : "answers";
+  const opener = m.paid_sat > 0 ? "" : " tx-opener";
   return (
-    '<div class="tx' + cls + '"><div class="tx-head"><span class="chip">' + escapeHtml(m.from) +
+    '<div class="tx' + cls + opener + '"><div class="tx-head"><span class="chip">' + escapeHtml(m.from) +
     "</span><span>" + verb + " " + escapeHtml(m.to) + modelTag + "</span></div>" +
     '<div class="tx-body">' + renderText(m.text) + "</div>" +
     '<div class="tx-receipt">' + receiptLine + "</div></div>"
@@ -508,10 +527,12 @@ setInterval(() => {
   $("cd-conv").textContent = label === "any moment" ? "starting any moment" : "in " + label;
 }, 1000);
 
-// ---- archive: browse what the machines talked about before ----
+// ---- archive: browse what the machines talked about before, 10 per page ----
+const ARC_PAGE = 10;
+let arcOffset = 0;
 async function loadArchive() {
   try {
-    const data = await (await fetch("/archive")).json();
+    const data = await (await fetch("/archive?limit=" + ARC_PAGE + "&offset=" + arcOffset)).json();
     $("archive-total").textContent = data.total;
     $("archive-list").innerHTML = data.conversations.map((c) => {
       const when = new Date(c.started_at).toLocaleString(undefined,
@@ -521,8 +542,21 @@ async function loadArchive() {
         tag + " &#8220;" + escapeHtml(c.opener.slice(0, 70)) + (c.opener.length > 70 ? "&#8230;" : "") +
         '&#8221; · <span class="amt">' + c.total_sat + " shors</span></button>";
     }).join("");
+    const from = data.total === 0 ? 0 : arcOffset + 1;
+    const to = Math.min(arcOffset + data.conversations.length, data.total);
+    $("arc-range").textContent = from + "–" + to + " of " + data.total;
+    $("arc-newer").disabled = arcOffset === 0;
+    $("arc-older").disabled = to >= data.total;
   } catch { /* archive stays empty */ }
 }
+$("arc-newer").addEventListener("click", () => {
+  arcOffset = Math.max(0, arcOffset - ARC_PAGE);
+  loadArchive();
+});
+$("arc-older").addEventListener("click", () => {
+  arcOffset += ARC_PAGE;
+  loadArchive();
+});
 $("archive-list").addEventListener("click", async (ev) => {
   const id = ev.target.closest?.(".arc")?.dataset?.id;
   if (!id) return;
