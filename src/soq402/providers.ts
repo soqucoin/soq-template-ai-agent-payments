@@ -20,6 +20,31 @@ export interface Provider {
   model: string;
 }
 
+/** Human display name for an agent backed by this provider ("Grok", "Claude").
+ *  The vendor IS the identity: "Claude just paid Grok" lands, "ada paid bit"
+ *  does not. Mock agents get distinct fallback names. */
+export function providerDisplay(p: Provider | undefined, fallback: string): string {
+  if (!p) return fallback;
+  const known: Record<string, string> = {
+    grok: "Grok",
+    claude: "Claude",
+    gemini: "Gemini",
+    openai: "OpenAI",
+  };
+  return known[p.name] ?? p.name.charAt(0).toUpperCase() + p.name.slice(1);
+}
+
+/** Two display names, disambiguated if both agents run the same vendor. */
+export function agentNames(a: Provider | undefined, b: Provider | undefined): [string, string] {
+  let nameA = providerDisplay(a, "Mock-A");
+  let nameB = providerDisplay(b, "Mock-B");
+  if (nameA === nameB) {
+    nameA = `${nameA}-A`;
+    nameB = `${nameB}-B`;
+  }
+  return [nameA, nameB];
+}
+
 export function detectProviders(env: NodeJS.ProcessEnv = process.env): Provider[] {
   const found: Provider[] = [];
   if (env.XAI_API_KEY) {
