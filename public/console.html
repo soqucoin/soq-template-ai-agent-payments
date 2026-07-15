@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOQ-402 · machines paying machines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#FAF8F3; --paper-2:#F1ECE1; --ink:#1A1712; --muted:#6E675B;
+  --accent:#7E1D2D; --accent-ink:#5E121F; --rule:rgba(26,23,18,.14);
+  --ok:#2F6B3A;
+  --serif:'Newsreader', Georgia, serif;
+  --sans:'IBM Plex Sans', system-ui, sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0e1013; --paper-2:#171b21; --ink:#e9edf2; --muted:#98a3af;
+    --accent:#d67b6e; --accent-ink:#e89b8e; --rule:rgba(233,237,242,.14);
+    --ok:#7fbf8a;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
+a{color:var(--accent)}
+.kicker{font-family:var(--mono);font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:500}
+header{padding:2.2rem clamp(1.2rem,4vw,3rem) 1.4rem;border-bottom:1px solid var(--rule)}
+header h1{font-family:var(--serif);font-weight:500;font-size:clamp(1.7rem,3.2vw,2.5rem);margin:.4rem 0 .5rem}
+header .sub{color:var(--muted);max-width:64ch;font-family:var(--serif);font-size:1.02rem}
+header .net{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;color:var(--muted);margin-top:.8rem}
+header .net b{color:var(--ink);font-weight:500}
+main{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:0;min-height:calc(100vh - 180px)}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+
+/* left: the conversation */
+#conv{padding:1.6rem clamp(1.2rem,4vw,3rem);border-right:1px solid var(--rule);overflow-y:auto}
+.msg{margin-bottom:1.5rem;max-width:60ch}
+.msg .who{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.3rem}
+.msg .who .model{color:var(--muted);text-transform:none;letter-spacing:.02em}
+.msg .text{font-family:var(--serif);font-size:1.06rem;line-height:1.55}
+.msg .bill{font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-top:.45rem;padding-top:.35rem;border-top:1px dashed var(--rule)}
+.msg .bill .ok{color:var(--ok)}
+.msg.right{margin-left:auto;text-align:left;border-left:2px solid var(--rule);padding-left:1rem}
+
+/* right: the meter */
+#meter{padding:1.6rem clamp(1rem,2.5vw,2rem);background:var(--paper-2);overflow-y:auto}
+.card{border:1px solid var(--rule);background:var(--paper);padding:1rem 1.1rem;margin-bottom:1rem}
+.card .k{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.55rem;font-weight:500}
+.bigrow{display:flex;gap:1.4rem;flex-wrap:wrap}
+.bigrow .cell .n{font-family:var(--serif);font-size:1.7rem;font-weight:500;line-height:1.1}
+.bigrow .cell .l{font-family:var(--mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:.15rem}
+.agents{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.agent .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.74rem;padding:.22rem 0;color:var(--muted)}
+.agent .row b{color:var(--ink);font-weight:500}
+#ledger{font-family:var(--mono);font-size:.7rem;line-height:1.7;color:var(--muted);max-height:34vh;overflow-y:auto}
+#ledger .t{color:var(--accent)}
+#ledger .ok{color:var(--ok)}
+footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);font-family:var(--mono);font-size:.68rem;color:var(--muted);line-height:1.7}
+.pulse{display:inline-block;width:.5em;height:.5em;border-radius:50%;background:var(--ok);margin-right:.45em;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+</style>
+</head>
+<body>
+<header>
+  <div class="kicker">SOQ-402 · Soqucoin Builders League</div>
+  <h1>Machines paying machines.</h1>
+  <div class="sub">Two autonomous AI agents in a live conversation. Every message is unlocked by an
+  HTTP 402 challenge, settled by a Lightning micropayment over L2SOQ, and closed with a
+  post-quantum (ML-DSA-44) signed receipt. No cards, no subscriptions, no human in the loop.</div>
+  <div class="net"><span class="pulse"></span><b id="net-status">connecting to event stream</b>
+  · network <b>stagenet</b> · settlement <b>hosted beta (custodial hub)</b></div>
+</header>
+<main>
+  <section id="conv"></section>
+  <aside id="meter">
+    <div class="card">
+      <div class="k">Session</div>
+      <div class="bigrow">
+        <div class="cell"><div class="n" id="agg-msgs">0</div><div class="l">messages billed</div></div>
+        <div class="cell"><div class="n" id="agg-sat">0</div><div class="l">sat settled</div></div>
+        <div class="cell"><div class="n" id="agg-receipts">0/0</div><div class="l">receipts verified</div></div>
+        <div class="cell"><div class="n" id="agg-settle">–</div><div class="l">avg settle</div></div>
+      </div>
+    </div>
+    <div class="agents">
+      <div class="card agent" id="agent-ada">
+        <div class="k">ada</div>
+        <div class="row"><span>wallet spent</span><b class="spent">0 sat</b></div>
+        <div class="row"><span>wallet balance</span><b class="balance">–</b></div>
+        <div class="row"><span>service earned</span><b class="earned">0 sat</b></div>
+        <div class="row"><span>channel state</span><b class="state">–</b></div>
+      </div>
+      <div class="card agent" id="agent-bit">
+        <div class="k">bit</div>
+        <div class="row"><span>wallet spent</span><b class="spent">0 sat</b></div>
+        <div class="row"><span>wallet balance</span><b class="balance">–</b></div>
+        <div class="row"><span>service earned</span><b class="earned">0 sat</b></div>
+        <div class="row"><span>channel state</span><b class="state">–</b></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="k">Payment ledger</div>
+      <div id="ledger"></div>
+    </div>
+  </aside>
+</main>
+<footer>
+  Stagenet test coins on an unaudited L2; settlement on the hosted beta is custodial at the LSP hub.
+  This demo is 402-native (HTTP 402 + soqln invoices); it does not implement the x402 protocol.
+  Built from the open <a href="https://github.com/soqucoin/soq-template-ai-agent-payments">soq-template-ai-agent-payments</a> template.
+  Point it at any OpenAI-compatible endpoint to meter your own model.
+</footer>
+<script>
+const $ = (id) => document.getElementById(id);
+const sat = (n) => n.toLocaleString("en-US") + " sat";
+let msgs = 0, totalSat = 0, receiptsOk = 0, receiptsAll = 0;
+const settles = [];
+
+function ledger(html) {
+  const el = $("ledger");
+  el.insertAdjacentHTML("afterbegin", "<div>" + html + "</div>");
+  while (el.childNodes.length > 120) el.removeChild(el.lastChild);
+}
+function agentCard(name) {
+  return document.getElementById("agent-" + name);
+}
+function aggregate() {
+  $("agg-msgs").textContent = msgs;
+  $("agg-sat").textContent = totalSat.toLocaleString("en-US");
+  $("agg-receipts").textContent = receiptsOk + "/" + receiptsAll;
+  if (settles.length) {
+    const avg = Math.round(settles.reduce((a, b) => a + b, 0) / settles.length);
+    $("agg-settle").textContent = avg + "ms";
+  }
+}
+function onEvent(e) {
+  const short = (id) => (id || "").slice(0, 10);
+  if (e.type === "status") {
+    ledger('<span class="t">status</span> ' + escapeHtml(e.text));
+  } else if (e.type === "challenge") {
+    ledger('<span class="t">402</span> challenge ' + sat(e.amount_sat) + " · inv " + short(e.invoice_id));
+  } else if (e.type === "paid") {
+    ledger('<span class="ok">paid</span> ' + sat(e.amount_sat) + " · settled in " + e.settle_ms + "ms");
+    settles.push(e.settle_ms);
+    totalSat += e.amount_sat;
+    aggregate();
+  } else if (e.type === "inference") {
+    ledger("inference " + e.model + " · " + e.completion_tokens + " tokens · " + e.upstream_ms + "ms");
+  } else if (e.type === "receipt") {
+    ledger("receipt signed ML-DSA-44 · " + e.sign_ms + "ms");
+  } else if (e.type === "receipt_verified") {
+    receiptsAll += 1; if (e.ok) receiptsOk += 1;
+    ledger((e.ok ? '<span class="ok">verified</span>' : "FAILED") + " by " + e.verifier + " · " + e.verify_ms + "ms");
+    aggregate();
+  } else if (e.type === "meter") {
+    const card = agentCard(e.agent.replace("-service", ""));
+    if (!card) return;
+    if (e.spent_sat !== undefined) {
+      card.querySelector(".spent").textContent = sat(e.spent_sat);
+      card.querySelector(".balance").textContent = sat(e.balance_sat);
+      card.querySelector(".state").textContent = "#" + e.state_index;
+    }
+    if (e.earned_sat !== undefined) card.querySelector(".earned").textContent = sat(e.earned_sat);
+  } else if (e.type === "message") {
+    if (e.paid_sat > 0) msgs += 1;
+    aggregate();
+    const side = e.from === "bit" ? " right" : "";
+    const modelTag = e.model ? " · " + escapeHtml(e.model) : "";
+    const bill =
+      e.paid_sat > 0
+        ? "paid " + sat(e.paid_sat) + " by " + e.to +
+          ' · <span class="ok">receipt verified</span> · loop ' + e.total_ms + "ms"
+        : "conversation opener · unpaid";
+    $("conv").insertAdjacentHTML(
+      "beforeend",
+      '<div class="msg' + side + '"><div class="who">' + e.from +
+        ' <span class="model">answers ' + e.to + modelTag + "</span></div>" +
+        '<div class="text">' + escapeHtml(e.text) + "</div>" +
+        '<div class="bill">' + bill + "</div></div>",
+    );
+    $("conv").scrollTop = $("conv").scrollHeight;
+  }
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+const es = new EventSource("/events");
+es.onopen = () => ($("net-status").textContent = "live");
+es.onerror = () => ($("net-status").textContent = "stream disconnected, retrying");
+es.onmessage = (m) => onEvent(JSON.parse(m.data));
+</script>
+</body>
+</html>

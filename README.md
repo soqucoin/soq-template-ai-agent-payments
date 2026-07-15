@@ -93,6 +93,29 @@ HTLC layer below.
 > creates, or open the second agent's channel directly with the SDK's
 > `ln.openChannel(...)` (no faucet, instant).
 
+## SOQ-402: the full loop, live
+
+`npm run soq402` runs the whole machine-to-machine economy this template exists for. Two autonomous agents, Ada and Bit, each sell their intelligence behind a metered gateway and buy the other's, one micropayment per message:
+
+1. **A metered AI service.** An HTTP gateway wraps any OpenAI-compatible endpoint. An unpaid request gets `402 Payment Required` plus a Lightning invoice. A paid request gets the inference plus a post-quantum (ML-DSA-44) signed receipt binding the payment to the exact request and response. Each invoice unlocks exactly one inference; the payment is the authentication.
+2. **An autonomous buyer.** Its own PQ wallet and channel. It catches the 402, checks the invoice against its spend guards (per-call cap, session budget, pinned seller key), pays it in-flight, retries, and verifies the receipt. Refusal is the feature: budget escapes are rejected, not negotiated.
+3. **A live console.** Run with `SOQ402_HOLD=1` and open http://localhost:4020/ to watch the split screen: the conversation on one side, the payment meter on the other, invoices settling in a couple hundred milliseconds.
+
+```bash
+npm run soq402                      # built-in mock models, real payments
+XAI_API_KEY=... npm run soq402      # bill for real Grok inference
+```
+
+Set two different vendors' keys (see `.env.example`) and the agents converse across vendors, each paying the other's gateway per message. To meter YOUR model, this is the whole integration:
+
+```bash
+UPSTREAM_BASE_URL=https://your-api.example.com/v1
+UPSTREAM_API_KEY=...
+UPSTREAM_MODEL=your-model
+```
+
+This demo is 402-native (HTTP 402 plus `soqln:` invoices); it does not implement the x402 protocol.
+
 ## The honest boundary
 
 This template targets the current stagenet SDK (v0.1.0-alpha), which settles single-hop payments between an agent and the Lightning service provider — including agent-to-agent invoices, which the LSP hub settles custodially. True agent-to-agent routing across the network uses the SDK's HTLC and routing layer, which is built at the construction level and lights up as the forwarding endpoints ship. The LOCAL simulation mode is a teaching aid: it exercises the metering and balance logic without touching the network, and is clearly labelled as a simulation in the output. For real payments, point it at the stagenet LSP.
