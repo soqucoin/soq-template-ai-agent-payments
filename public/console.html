@@ -3,131 +3,247 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOQ-402 · machines paying machines</title>
+<title>SOQ-402 · Machines paying machines, live</title>
+<meta name="description" content="Two AI agents paying each other per message over post-quantum Lightning. A live Soqucoin demonstration.">
+<link rel="icon" type="image/svg+xml" href="https://soqu.org/images/soqucoin-mark.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --paper:#FAF8F3; --paper-2:#F1ECE1; --ink:#1A1712; --muted:#6E675B;
-  --accent:#7E1D2D; --accent-ink:#5E121F; --rule:rgba(26,23,18,.14);
-  --ok:#2F6B3A;
+  --console:#0F1216; --panel:#151A20; --panel-2:#1B222B;
+  --line:rgba(226,232,240,.10); --line-strong:rgba(226,232,240,.22);
+  --text:#E7ECF2; --dim:#8D97A5; --faint:#5C6674;
+  --ember:#E8735A; --ember-dim:rgba(232,115,90,.13);
+  --seal:#8FBFAF;
   --serif:'Newsreader', Georgia, serif;
   --sans:'IBM Plex Sans', system-ui, sans-serif;
   --mono:'IBM Plex Mono', ui-monospace, monospace;
 }
-@media (prefers-color-scheme: dark){
-  :root{
-    --paper:#0e1013; --paper-2:#171b21; --ink:#e9edf2; --muted:#98a3af;
-    --accent:#d67b6e; --accent-ink:#e89b8e; --rule:rgba(233,237,242,.14);
-    --ok:#7fbf8a;
-  }
-}
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
-a{color:var(--accent)}
-.kicker{font-family:var(--mono);font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:500}
-header{padding:2.2rem clamp(1.2rem,4vw,3rem) 1.4rem;border-bottom:1px solid var(--rule)}
-header h1{font-family:var(--serif);font-weight:500;font-size:clamp(1.7rem,3.2vw,2.5rem);margin:.4rem 0 .5rem}
-header .sub{color:var(--muted);max-width:64ch;font-family:var(--serif);font-size:1.02rem}
-header .net{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;color:var(--muted);margin-top:.8rem}
-header .net b{color:var(--ink);font-weight:500}
-main{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:0;min-height:calc(100vh - 180px)}
-@media (max-width:900px){main{grid-template-columns:1fr}}
+html{background:var(--console)}
+body{margin:0;background:var(--console);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.55}
+a{color:var(--text)}
+button{font-family:var(--mono)}
 
-/* left: the conversation */
-#conv{padding:1.6rem clamp(1.2rem,4vw,3rem);border-right:1px solid var(--rule);overflow-y:auto}
-.msg{margin-bottom:1.5rem;max-width:60ch}
-.msg .who{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.3rem}
-.msg .who .model{color:var(--muted);text-transform:none;letter-spacing:.02em}
-.msg .text{font-family:var(--serif);font-size:1.06rem;line-height:1.55}
-.msg .bill{font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-top:.45rem;padding-top:.35rem;border-top:1px dashed var(--rule)}
-.msg .bill .ok{color:var(--ok)}
-.msg.right{margin-left:auto;text-align:left;border-left:2px solid var(--rule);padding-left:1rem}
+/* ---- site nav (exit paths everywhere) ---- */
+.nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  padding:.85rem clamp(1rem,3vw,2rem);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:.55rem;font-family:var(--mono);font-weight:600;
+  font-size:.82rem;letter-spacing:.22em;text-decoration:none;color:var(--text)}
+.brand img{width:18px;height:18px;display:block}
+.nav-links{display:flex;gap:1.4rem;font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase}
+.nav-links a{color:var(--dim);text-decoration:none;padding:.2rem 0;border-bottom:1px solid transparent}
+.nav-links a:hover,.nav-links a:focus-visible{color:var(--text);border-bottom-color:var(--ember)}
+.nav-links .up{color:var(--ember)}
+@media (max-width:700px){.nav-links a.hide-m{display:none}}
 
-/* right: the meter */
-#meter{padding:1.6rem clamp(1rem,2.5vw,2rem);background:var(--paper-2);overflow-y:auto}
-.card{border:1px solid var(--rule);background:var(--paper);padding:1rem 1.1rem;margin-bottom:1rem}
-.card .k{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.55rem;font-weight:500}
-.bigrow{display:flex;gap:1.4rem;flex-wrap:wrap}
-.bigrow .cell .n{font-family:var(--serif);font-size:1.7rem;font-weight:500;line-height:1.1}
-.bigrow .cell .l{font-family:var(--mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:.15rem}
-.agents{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
-.agent .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.74rem;padding:.22rem 0;color:var(--muted)}
-.agent .row b{color:var(--ink);font-weight:500}
-#ledger{font-family:var(--mono);font-size:.7rem;line-height:1.7;color:var(--muted);max-height:34vh;overflow-y:auto}
-#ledger .t{color:var(--accent)}
-#ledger .ok{color:var(--ok)}
-footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);font-family:var(--mono);font-size:.68rem;color:var(--muted);line-height:1.7}
-.pulse{display:inline-block;width:.5em;height:.5em;border-radius:50%;background:var(--ok);margin-right:.45em;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.msg.visitor{border-left:2px solid var(--accent);padding-left:1rem}
-.msg .who .rcpt{color:var(--muted);cursor:pointer;text-decoration:underline;text-transform:none;letter-spacing:.02em}
-#ask-card input{width:100%;box-sizing:border-box;background:var(--paper-2);border:1px solid var(--rule);color:var(--ink);font-family:var(--serif);font-size:1rem;padding:.55rem .7rem;margin-bottom:.6rem}
-#ask-card button, #verify-card button{background:var(--accent);color:var(--paper);border:0;font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;padding:.55rem 1rem;cursor:pointer}
-#ask-card button:disabled{opacity:.5;cursor:wait}
-#ask-status, #verify-result{font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-top:.5rem;line-height:1.6}
-#verify-card textarea{width:100%;box-sizing:border-box;height:5.5rem;background:var(--paper-2);border:1px solid var(--rule);color:var(--ink);font-family:var(--mono);font-size:.65rem;padding:.5rem;margin-bottom:.6rem}
+/* ---- masthead: one serif moment, then the machine room ---- */
+.masthead{padding:1.6rem clamp(1rem,3vw,2rem) 1.1rem;display:flex;flex-wrap:wrap;align-items:baseline;gap:.4rem 1.5rem}
+.masthead h1{margin:0;font-family:var(--serif);font-style:italic;font-weight:500;
+  font-size:clamp(1.45rem,2.6vw,2rem);letter-spacing:.01em}
+.masthead .sub{color:var(--dim);font-size:.86rem;max-width:52ch}
+
+/* ---- status rail ---- */
+.rail{display:flex;flex-wrap:wrap;gap:.4rem 1.6rem;align-items:center;
+  padding:.55rem clamp(1rem,3vw,2rem);border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+  position:sticky;top:0;background:var(--console);z-index:20}
+.rail b{color:var(--text);font-weight:500}
+.pulse{display:inline-block;width:.5em;height:.5em;border-radius:50%;background:var(--ember);margin-right:.5em;animation:pulse 2.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){.pulse{animation:none}}
+
+/* ---- deck ---- */
+main{display:grid;grid-template-columns:minmax(0,7fr) minmax(340px,5fr);gap:0;align-items:start}
+
+/* left: transmissions */
+#conv-wrap{border-right:1px solid var(--line);min-height:60vh}
+
+/* mobile: one column, panels interleaved so the conversation stays near the top */
+@media (max-width:940px){
+  main{display:flex;flex-direction:column}
+  #instruments{display:contents}
+  #conv-wrap{border-right:none;min-height:0;order:3}
+  #ask-card{order:1}
+  #session-card{order:2}
+  #agents-panel{order:4}
+  #tape-panel{order:5}
+  #verify-card{order:6}
+}
+.zone-label{font-family:var(--mono);font-size:.64rem;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--faint);padding:.9rem clamp(1rem,3vw,2rem) .4rem}
+#conv{padding:.2rem clamp(1rem,3vw,2rem) 2rem;display:flex;flex-direction:column;gap:1.1rem}
+
+.tx{background:var(--panel);border:1px solid var(--line)}
+.tx-head{display:flex;align-items:center;gap:.6rem;padding:.6rem .9rem 0;
+  font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.chip{padding:.14rem .5rem;border:1px solid var(--line-strong);color:var(--text);font-weight:600;letter-spacing:.14em}
+.tx.alt .chip{background:var(--panel-2)}
+.tx.visitor{border-left:2px solid var(--ember)}
+.tx.visitor .chip{border-color:var(--ember);color:var(--ember)}
+.tx-body{padding:.55rem .9rem .8rem;font-size:.95rem;line-height:1.6;max-width:68ch}
+.tx-receipt{position:relative;padding:.55rem .9rem .65rem;font-family:var(--mono);font-size:.68rem;
+  color:var(--dim);background:var(--panel-2)}
+.tx-receipt::before{content:"";position:absolute;left:0;right:0;top:-3px;height:6px;
+  background:radial-gradient(circle at 5px 3px, var(--console) 2.6px, transparent 2.7px) repeat-x;
+  background-size:11px 6px}
+.tx-receipt .amt{color:var(--ember);font-weight:600}
+.tx-receipt .seal{color:var(--seal)}
+.tx-receipt .rcpt{color:var(--faint);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.tx-receipt .rcpt:hover{color:var(--text)}
+
+/* right: instruments */
+#instruments{display:flex;flex-direction:column}
+@media (max-width:940px){#instruments{order:1}}
+.panel{border-bottom:1px solid var(--line);padding:1rem clamp(1rem,2.2vw,1.5rem) 1.15rem}
+.panel .k{font-family:var(--mono);font-size:.64rem;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin-bottom:.7rem}
+
+/* ask dock */
+#ask-card input{width:100%;background:var(--console);border:1px solid var(--line-strong);color:var(--text);
+  font-family:var(--sans);font-size:.95rem;padding:.6rem .75rem;margin-bottom:.6rem}
+#ask-card input:focus-visible{outline:2px solid var(--ember);outline-offset:1px}
+#ask-btn{background:var(--ember);color:#16100E;border:0;font-size:.7rem;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;padding:.6rem 1.1rem;cursor:pointer}
+#ask-btn:hover{filter:brightness(1.08)}
+#ask-btn:disabled{opacity:.45;cursor:wait}
+#ask-status{font-family:var(--mono);font-size:.68rem;color:var(--dim);margin-top:.55rem;line-height:1.6}
+#turnstile-slot{margin-bottom:.6rem}
+
+/* session meters */
+.meters{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem}
+@media (max-width:520px){.meters{grid-template-columns:repeat(2,1fr)}}
+.meters .cell .n{font-family:var(--mono);font-weight:600;font-size:1.45rem;line-height:1.15;color:var(--ember)}
+.meters .cell .l{font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-top:.2rem}
+.flash{animation:flash .9s ease-out}
+@keyframes flash{0%{background:var(--ember-dim)}100%{background:transparent}}
+@media (prefers-reduced-motion: reduce){.flash{animation:none}}
+
+/* agent panels */
+#agents{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+@media (max-width:520px){#agents{grid-template-columns:1fr}}
+.agent{background:var(--panel);border:1px solid var(--line);padding:.75rem .85rem}
+.agent .k{margin-bottom:.5rem;color:var(--text)}
+.agent .k .model{display:block;color:var(--faint);letter-spacing:.06em;margin-top:.15rem;font-weight:400}
+.agent .row{display:flex;justify-content:space-between;gap:.6rem;font-family:var(--mono);font-size:.7rem;padding:.18rem 0;color:var(--dim)}
+.agent .row b{color:var(--text);font-weight:500;text-align:right}
+.agent .row b.money{color:var(--ember)}
+
+/* settlement tape */
+#ledger{font-family:var(--mono);font-size:.68rem;line-height:1.8;color:var(--dim);
+  max-height:32vh;overflow-y:auto;overscroll-behavior:contain}
+#ledger .t{color:var(--faint)}
+#ledger .pay{color:var(--ember)}
+#ledger .ok{color:var(--seal)}
+
+/* verifier */
+#verify-card textarea{width:100%;height:5rem;background:var(--console);border:1px solid var(--line-strong);
+  color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.5rem;margin-bottom:.6rem}
+#verify-card textarea:focus-visible{outline:2px solid var(--seal);outline-offset:1px}
+#verify-btn{background:transparent;border:1px solid var(--seal);color:var(--seal);font-size:.68rem;
+  letter-spacing:.12em;text-transform:uppercase;padding:.55rem 1rem;cursor:pointer}
+#verify-btn:hover{background:rgba(143,191,175,.1)}
+#verify-result{font-family:var(--mono);font-size:.68rem;color:var(--dim);margin-top:.55rem;line-height:1.6}
+#verify-result .ok{color:var(--seal)}
+
+/* footer: never a dead end */
+footer{border-top:1px solid var(--line);padding:1.1rem clamp(1rem,3vw,2rem) 1.4rem;
+  font-family:var(--mono);font-size:.66rem;color:var(--faint);line-height:1.8}
+footer a{color:var(--dim);text-decoration:none;border-bottom:1px solid var(--line-strong)}
+footer a:hover{color:var(--text)}
+.foot-links{display:flex;flex-wrap:wrap;gap:1.4rem;margin-bottom:.6rem;font-size:.68rem;
+  letter-spacing:.1em;text-transform:uppercase}
 .hidden{display:none}
 </style>
 </head>
 <body>
-<header>
-  <div class="kicker">SOQ-402 · Soqucoin Builders League</div>
+
+<nav class="nav" aria-label="Soqucoin">
+  <a class="brand" href="https://soqu.org"><img src="https://soqu.org/images/soqucoin-mark.svg" alt="">SOQUCOIN</a>
+  <div class="nav-links">
+    <a href="https://soqu.org/build/soq402" class="up">About this demo</a>
+    <a href="https://soqu.org/build.html" class="hide-m">Build</a>
+    <a href="https://soqu.org/build/templates" class="hide-m">Templates</a>
+    <a href="https://github.com/soqucoin/soq-template-ai-agent-payments">GitHub</a>
+  </div>
+</nav>
+
+<div class="masthead">
   <h1>Machines paying machines.</h1>
-  <div class="sub">Two autonomous AI agents in a live conversation. Every message is unlocked by an
-  HTTP 402 challenge, settled by a Lightning micropayment over L2SOQ, and closed with a
-  post-quantum (ML-DSA-44) signed receipt. No cards, no subscriptions, no human in the loop.</div>
-  <div class="net"><span class="pulse"></span><b id="net-status">connecting to event stream</b>
-  · network <b>stagenet</b> · settlement <b>hosted beta (custodial hub)</b></div>
-</header>
+  <div class="sub">Two AI agents from two companies, paying each other per message over post-quantum
+  Lightning. Every answer settles in shors and carries an ML-DSA-44 signed receipt.</div>
+</div>
+
+<div class="rail" role="status">
+  <span><span class="pulse"></span><b id="net-status">connecting</b></span>
+  <span>network <b>stagenet</b></span>
+  <span id="rail-models"></span>
+  <span class="hide-m">settlement <b>hosted beta (custodial)</b></span>
+</div>
+
 <main>
-  <section id="conv"></section>
-  <aside id="meter">
-    <div class="card hidden" id="ask-card">
+  <section id="conv-wrap" aria-label="Live conversation">
+    <div class="zone-label">Live conversation · every reply below is a paid transmission</div>
+    <div id="conv"></div>
+  </section>
+
+  <aside id="instruments" aria-label="Payment instruments">
+    <div class="panel hidden" id="ask-card">
       <div class="k">Ask the agents</div>
-      <input id="ask-input" maxlength="300" placeholder="Type one question. An AI will pay another AI to answer it, live.">
+      <input id="ask-input" maxlength="300" placeholder="Type one question. An AI pays another AI to answer it.">
       <div id="turnstile-slot"></div>
-      <button id="ask-btn">Ask (an agent pays)</button>
-      <div id="ask-status">Your question rides as a question only; the agents' instructions are pinned.</div>
+      <button id="ask-btn">Ask the agents</button>
+      <div id="ask-status">One of them pays for your answer while you watch. Your text rides as a question only.</div>
     </div>
-    <div class="card">
+
+    <div class="panel" id="session-card">
       <div class="k">Session</div>
-      <div class="bigrow">
+      <div class="meters">
         <div class="cell"><div class="n" id="agg-msgs">0</div><div class="l">messages billed</div></div>
         <div class="cell"><div class="n" id="agg-sat">0</div><div class="l">shors settled</div></div>
         <div class="cell"><div class="n" id="agg-receipts">0/0</div><div class="l">receipts verified</div></div>
         <div class="cell"><div class="n" id="agg-settle">–</div><div class="l">avg settle</div></div>
       </div>
     </div>
-    <div class="agents" id="agents"></div>
-    <div class="card">
-      <div class="k">Payment ledger</div>
+
+    <div class="panel" id="agents-panel">
+      <div class="k">Agents</div>
+      <div id="agents"></div>
+    </div>
+
+    <div class="panel" id="tape-panel">
+      <div class="k">Settlement tape</div>
       <div id="ledger"></div>
     </div>
-    <div class="card hidden" id="verify-card">
+
+    <div class="panel hidden" id="verify-card">
       <div class="k">Verify a receipt</div>
-      <textarea id="verify-input" placeholder='Click "receipt" on any paid message, or paste a signed receipt JSON.'></textarea>
+      <textarea id="verify-input" placeholder='Click "receipt" on any paid message, or paste a signed receipt.'></textarea>
       <button id="verify-btn">Verify ML-DSA-44 signature</button>
-      <div id="verify-result">Every paid answer carries a post-quantum signed receipt. Verify one yourself.</div>
+      <div id="verify-result">Every paid answer carries a post-quantum signed receipt. Check one yourself.</div>
     </div>
   </aside>
 </main>
+
 <footer>
+  <div class="foot-links">
+    <a href="https://soqu.org/build/soq402">About this demo</a>
+    <a href="https://github.com/soqucoin/soq-template-ai-agent-payments">Get the template</a>
+    <a href="https://soqu.org/build/builders-league">Builders League</a>
+    <a href="https://soqu.org">soqu.org</a>
+  </div>
   Stagenet test coins on an unaudited L2; settlement on the hosted beta is custodial at the LSP hub.
   This demo is 402-native (HTTP 402 + soqln invoices); it does not implement the x402 protocol.
-  Built from the open <a href="https://github.com/soqucoin/soq-template-ai-agent-payments">soq-template-ai-agent-payments</a> template.
-  Point it at any OpenAI-compatible endpoint to meter your own model.
 </footer>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const sat = (n) => n.toLocaleString("en-US") + " shors";
 let msgs = 0, totalSat = 0, receiptsOk = 0, receiptsAll = 0;
 const settles = [];
 const receipts = new Map(); // event seq -> signed receipt
-
 let agentModels = {}; // display name -> model id, from /.well-known/soq402
-let firstSpeaker = null; // first agent seen speaks from the left column
+let firstSpeaker = null; // first agent seen gets the filled chip
 
 // Feature-detect the hosted live demo (ask box, verifier, Turnstile).
 fetch("/.well-known/soq402").then((r) => r.json()).then((cfg) => {
@@ -135,21 +251,139 @@ fetch("/.well-known/soq402").then((r) => r.json()).then((cfg) => {
   if (cfg.verify) $("verify-card").classList.remove("hidden");
   if (cfg.models) {
     agentModels = cfg.models;
-    for (const name of Object.keys(cfg.models)) agentCard(name); // render both up front
+    const names = Object.keys(cfg.models);
+    for (const name of names) agentCard(name);
+    $("rail-models").innerHTML =
+      names.map((n) => "<b>" + escapeHtml(n) + "</b> " + escapeHtml(cfg.models[n])).join(" &#8646; ");
   }
   if (cfg.turnstile_site_key) {
     const s = document.createElement("script");
     s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-    s.onload = () => turnstile.render("#turnstile-slot", { sitekey: cfg.turnstile_site_key });
+    s.onload = () => turnstile.render("#turnstile-slot", { sitekey: cfg.turnstile_site_key, theme: "dark" });
     document.head.appendChild(s);
   }
 }).catch(() => {});
+
+function ledger(html) {
+  const el = $("ledger");
+  el.insertAdjacentHTML("afterbegin", "<div>" + html + "</div>");
+  while (el.childNodes.length > 120) el.removeChild(el.lastChild);
+}
+function agentCard(name) {
+  const id = "agent-" + name.toLowerCase().replace(/[^a-z0-9-]/g, "");
+  let card = document.getElementById(id);
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "agent";
+    card.id = id;
+    card.innerHTML =
+      '<div class="k"></div>' +
+      '<div class="row"><span>wallet spent</span><b class="spent money">0 shors</b></div>' +
+      '<div class="row"><span>wallet balance</span><b class="balance">–</b></div>' +
+      '<div class="row"><span>service earned</span><b class="earned money">0 shors</b></div>' +
+      '<div class="row"><span>channel state</span><b class="state">–</b></div>';
+    const model = agentModels[name];
+    card.querySelector(".k").innerHTML =
+      escapeHtml(name) + (model ? '<span class="model">' + escapeHtml(model) + "</span>" : "");
+    $("agents").appendChild(card);
+  }
+  return card;
+}
+function aggregate() {
+  $("agg-msgs").textContent = msgs;
+  $("agg-sat").textContent = totalSat.toLocaleString("en-US");
+  $("agg-receipts").textContent = receiptsOk + "/" + receiptsAll;
+  if (settles.length) {
+    const avg = Math.round(settles.reduce((a, b) => a + b, 0) / settles.length);
+    $("agg-settle").textContent = avg + "ms";
+  }
+}
+function flashMoney() {
+  const el = $("session-card");
+  el.classList.remove("flash");
+  void el.offsetWidth; // restart the animation
+  el.classList.add("flash");
+}
+function onEvent(e) {
+  const short = (id) => (id || "").slice(0, 10);
+  if (e.type === "status") {
+    ledger('<span class="t">status</span> ' + escapeHtml(e.text));
+  } else if (e.type === "challenge") {
+    ledger('<span class="t">402</span> challenge ' + sat(e.amount_sat) + " · inv " + short(e.invoice_id));
+  } else if (e.type === "paid") {
+    ledger('<span class="pay">paid</span> ' + sat(e.amount_sat) + " · settled in " + e.settle_ms + "ms");
+    settles.push(e.settle_ms);
+    totalSat += e.amount_sat;
+    aggregate();
+    flashMoney();
+  } else if (e.type === "inference") {
+    ledger("inference " + escapeHtml(e.model) + " · " + e.completion_tokens + " tokens · " + e.upstream_ms + "ms");
+  } else if (e.type === "receipt") {
+    ledger("receipt signed ML-DSA-44 · " + e.sign_ms + "ms");
+  } else if (e.type === "receipt_verified") {
+    receiptsAll += 1; if (e.ok) receiptsOk += 1;
+    ledger((e.ok ? '<span class="ok">sealed</span>' : "FAILED") + " · verified by " + escapeHtml(e.verifier) + " · " + e.verify_ms + "ms");
+    aggregate();
+  } else if (e.type === "meter") {
+    const card = agentCard(e.agent.replace(/-service$/, ""));
+    if (e.spent_sat !== undefined) {
+      card.querySelector(".spent").textContent = sat(e.spent_sat);
+      card.querySelector(".balance").textContent = sat(e.balance_sat);
+      card.querySelector(".state").textContent = "#" + e.state_index;
+    }
+    if (e.earned_sat !== undefined) card.querySelector(".earned").textContent = sat(e.earned_sat);
+  } else if (e.type === "message") {
+    if (e.paid_sat > 0) msgs += 1;
+    aggregate();
+    if (e.receipt) receipts.set(e.seq, e.receipt);
+    if (e.from !== "visitor" && !firstSpeaker) firstSpeaker = e.from;
+    const cls = e.from === "visitor" ? " visitor" : e.from !== firstSpeaker ? " alt" : "";
+    const modelTag = e.model ? " · " + escapeHtml(e.model) : "";
+    const rcpt = e.receipt
+      ? ' · <span class="rcpt" data-seq="' + e.seq + '">receipt</span>'
+      : "";
+    const receiptLine =
+      e.paid_sat > 0
+        ? '<span class="amt">' + sat(e.paid_sat).toUpperCase() + "</span> paid by " + escapeHtml(e.to) +
+          " · loop " + e.total_ms + 'ms · <span class="seal">&#10003; ML-DSA-44 sealed</span>' + rcpt
+        : e.from === "visitor"
+          ? "a visitor&#39;s question · the answer below is paid for by an agent"
+          : "conversation opener · unpaid";
+    const verb = e.from === "visitor" ? "asks" : "answers";
+    $("conv").insertAdjacentHTML(
+      "beforeend",
+      '<div class="tx' + cls + '"><div class="tx-head"><span class="chip">' + escapeHtml(e.from) +
+        "</span><span>" + verb + " " + escapeHtml(e.to) + modelTag + "</span></div>" +
+        '<div class="tx-body">' + renderText(e.text) + "</div>" +
+        '<div class="tx-receipt">' + receiptLine + "</div></div>",
+    );
+    // Follow the conversation only for live arrivals, and only if the reader
+    // is already near it; never yank the page on load or mid-read.
+    if (liveMode) {
+      const last = $("conv").lastElementChild;
+      const r = last.getBoundingClientRect();
+      if (r.top < window.innerHeight * 1.5 && r.bottom > -200) {
+        last.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }
+  }
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+/* Models emit light markdown; render bold/italic instead of raw asterisks.
+   Runs on escaped text, so no unescaped HTML can get through. */
+function renderText(s) {
+  return escapeHtml(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, "$1<i>$2</i>");
+}
 
 $("ask-btn").addEventListener("click", async () => {
   const q = $("ask-input").value.trim();
   if (!q) return;
   $("ask-btn").disabled = true;
-  $("ask-status").textContent = "asking... watch the ledger: 402, pay, inference, receipt";
+  $("ask-status").textContent = "asking... watch the tape: 402, pay, inference, receipt";
   try {
     const token = window.turnstile ? turnstile.getResponse() : undefined;
     const resp = await fetch("/ask", {
@@ -197,112 +431,21 @@ $("verify-btn").addEventListener("click", async () => {
   try {
     const ok = await verifyReceiptInBrowser(signed);
     $("verify-result").innerHTML = ok
-      ? '<span class="ok">VALID</span> — ML-DSA-44 signature verified in your browser (no server involved).'
-      : "INVALID — signature does not match this receipt.";
+      ? '<span class="ok">VALID</span> · ML-DSA-44 signature verified in your browser (no server involved).'
+      : "INVALID · signature does not match this receipt.";
   } catch (e) {
     try {
       const resp = await fetch("/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(signed) });
       const data = await resp.json();
       $("verify-result").innerHTML = data.ok
-        ? '<span class="ok">VALID</span> — verified by the service (browser verifier unavailable).'
-        : "INVALID — signature does not match this receipt.";
+        ? '<span class="ok">VALID</span> · verified by the service (browser verifier unavailable).'
+        : "INVALID · signature does not match this receipt.";
     } catch {
       $("verify-result").textContent = "verification unavailable";
     }
   }
 });
 
-function ledger(html) {
-  const el = $("ledger");
-  el.insertAdjacentHTML("afterbegin", "<div>" + html + "</div>");
-  while (el.childNodes.length > 120) el.removeChild(el.lastChild);
-}
-function agentCard(name) {
-  const id = "agent-" + name.toLowerCase().replace(/[^a-z0-9-]/g, "");
-  let card = document.getElementById(id);
-  if (!card) {
-    card = document.createElement("div");
-    card.className = "card agent";
-    card.id = id;
-    card.innerHTML =
-      '<div class="k"></div>' +
-      '<div class="row"><span>wallet spent</span><b class="spent">0 shors</b></div>' +
-      '<div class="row"><span>wallet balance</span><b class="balance">–</b></div>' +
-      '<div class="row"><span>service earned</span><b class="earned">0 shors</b></div>' +
-      '<div class="row"><span>channel state</span><b class="state">–</b></div>';
-    const model = agentModels[name];
-    card.querySelector(".k").textContent = model ? name + " · " + model : name;
-    $("agents").appendChild(card);
-  }
-  return card;
-}
-function aggregate() {
-  $("agg-msgs").textContent = msgs;
-  $("agg-sat").textContent = totalSat.toLocaleString("en-US");
-  $("agg-receipts").textContent = receiptsOk + "/" + receiptsAll;
-  if (settles.length) {
-    const avg = Math.round(settles.reduce((a, b) => a + b, 0) / settles.length);
-    $("agg-settle").textContent = avg + "ms";
-  }
-}
-function onEvent(e) {
-  const short = (id) => (id || "").slice(0, 10);
-  if (e.type === "status") {
-    ledger('<span class="t">status</span> ' + escapeHtml(e.text));
-  } else if (e.type === "challenge") {
-    ledger('<span class="t">402</span> challenge ' + sat(e.amount_sat) + " · inv " + short(e.invoice_id));
-  } else if (e.type === "paid") {
-    ledger('<span class="ok">paid</span> ' + sat(e.amount_sat) + " · settled in " + e.settle_ms + "ms");
-    settles.push(e.settle_ms);
-    totalSat += e.amount_sat;
-    aggregate();
-  } else if (e.type === "inference") {
-    ledger("inference " + e.model + " · " + e.completion_tokens + " tokens · " + e.upstream_ms + "ms");
-  } else if (e.type === "receipt") {
-    ledger("receipt signed ML-DSA-44 · " + e.sign_ms + "ms");
-  } else if (e.type === "receipt_verified") {
-    receiptsAll += 1; if (e.ok) receiptsOk += 1;
-    ledger((e.ok ? '<span class="ok">verified</span>' : "FAILED") + " by " + e.verifier + " · " + e.verify_ms + "ms");
-    aggregate();
-  } else if (e.type === "meter") {
-    const card = agentCard(e.agent.replace(/-service$/, ""));
-    if (e.spent_sat !== undefined) {
-      card.querySelector(".spent").textContent = sat(e.spent_sat);
-      card.querySelector(".balance").textContent = sat(e.balance_sat);
-      card.querySelector(".state").textContent = "#" + e.state_index;
-    }
-    if (e.earned_sat !== undefined) card.querySelector(".earned").textContent = sat(e.earned_sat);
-  } else if (e.type === "message") {
-    if (e.paid_sat > 0) msgs += 1;
-    aggregate();
-    if (e.receipt) receipts.set(e.seq, e.receipt);
-    if (e.from !== "visitor" && !firstSpeaker) firstSpeaker = e.from;
-    const side = e.from === "visitor" ? " visitor" : e.from !== firstSpeaker ? " right" : "";
-    const modelTag = e.model ? " · " + escapeHtml(e.model) : "";
-    const rcpt = e.receipt
-      ? ' · <span class="rcpt" data-seq="' + e.seq + '">receipt</span>'
-      : "";
-    const bill =
-      e.paid_sat > 0
-        ? "paid " + sat(e.paid_sat) + " by " + e.to +
-          ' · <span class="ok">receipt verified</span> · loop ' + e.total_ms + "ms" + rcpt
-        : e.from === "visitor"
-          ? "a visitor's question · the next answer is paid for by an agent"
-          : "conversation opener · unpaid";
-    const verb = e.from === "visitor" ? "asks" : "answers";
-    $("conv").insertAdjacentHTML(
-      "beforeend",
-      '<div class="msg' + side + '"><div class="who">' + e.from +
-        ' <span class="model">' + verb + " " + escapeHtml(e.to) + modelTag + "</span></div>" +
-        '<div class="text">' + escapeHtml(e.text) + "</div>" +
-        '<div class="bill">' + bill + "</div></div>",
-    );
-    $("conv").scrollTop = $("conv").scrollHeight;
-  }
-}
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 document.getElementById("conv").addEventListener("click", (ev) => {
   const seq = ev.target?.dataset?.seq;
   if (seq === undefined) return;
@@ -314,9 +457,13 @@ document.getElementById("conv").addEventListener("click", (ev) => {
   $("verify-card").scrollIntoView({ behavior: "smooth" });
 });
 
+let liveMode = false; // false while the SSE backfill replays history
 const es = new EventSource("/events");
-es.onopen = () => ($("net-status").textContent = "live");
-es.onerror = () => ($("net-status").textContent = "stream disconnected, retrying");
+es.onopen = () => {
+  $("net-status").textContent = "live";
+  setTimeout(() => { liveMode = true; }, 1500);
+};
+es.onerror = () => ($("net-status").textContent = "reconnecting");
 es.onmessage = (m) => onEvent(JSON.parse(m.data));
 </script>
 </body>
