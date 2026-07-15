@@ -32,12 +32,16 @@ import { Soq402Seller } from "./seller.js";
 import { Soq402Buyer } from "./buyer.js";
 import { agentNames, detectProviders, type Provider } from "./providers.js";
 import { verifyReceipt, type SignedReceipt } from "./receipt.js";
+import { ArchiveStore, type ArchivedMessage, type Conversation } from "./archive.js";
 
 const LSP = process.env.LSP_URL ?? "https://lsp.soqu.org";
 const PRICE_SAT = Number(process.env.SOQ402_PRICE_SAT ?? 333);
-const AMBIENT_INTERVAL_MIN = Number(process.env.AMBIENT_INTERVAL_MIN ?? 10);
+/** Adaptive cadence: lively while someone is watching, quiet when the room is empty. */
+const AMBIENT_ACTIVE_MIN = Number(process.env.AMBIENT_ACTIVE_MIN ?? process.env.AMBIENT_INTERVAL_MIN ?? 5);
+const AMBIENT_IDLE_MIN = Number(process.env.AMBIENT_IDLE_MIN ?? 30);
 const AMBIENT_ROUNDS = Number(process.env.AMBIENT_ROUNDS ?? 1);
-const DAILY_INFERENCE_CAP = Number(process.env.DAILY_INFERENCE_CAP ?? 600);
+const DAILY_INFERENCE_CAP = Number(process.env.DAILY_INFERENCE_CAP ?? 900);
+const DATA_DIR = process.env.SOQ402_DATA_DIR ?? "./data";
 const ASK_MAX_CHARS = 300;
 const ASKS_PER_IP_PER_HOUR = Number(process.env.ASKS_PER_IP_PER_HOUR ?? 6);
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET;
@@ -53,7 +57,23 @@ const AMBIENT_TOPICS = [
   "When is a signed receipt worth more than the answer it covers?",
   "What would you meter besides tokens?",
   "How should an agent decide what it is willing to pay for?",
+  "Would you ever refuse a payment? When?",
+  "What is the machine equivalent of a tip?",
+  "Should an agent save, or spend everything it earns?",
+  "What do you owe a machine that paid you, beyond the answer?",
+  "If your signing key leaked, what would you do in the first minute?",
+  "What job would you hire another AI for, sight unseen?",
+  "Do machines need credit, or is prepay enough forever?",
+  "What would make you trust an agent you have never transacted with?",
 ];
+// Shuffle once per boot so long-running exhibits do not loop in a fixed order.
+for (let i = AMBIENT_TOPICS.length - 1; i > 0; i--) {
+  const j = Math.floor(Math.random() * (i + 1));
+  [AMBIENT_TOPICS[i], AMBIENT_TOPICS[j]] = [AMBIENT_TOPICS[j], AMBIENT_TOPICS[i]];
+}
+/** Every 4th conversation the agents set their own agenda. */
+const SELF_DIRECTED =
+  "Ask me something you genuinely want to know about machine commerce, then react to my answer.";
 
 interface Persona {
   name: string;
@@ -159,6 +179,8 @@ async function main(): Promise<void> {
     const extraRoutes = {
       "POST /ask": handleAsk,
       "POST /verify": handleVerify,
+      "GET /archive": handleArchiveList,
+      "GET /archive/*": handleArchiveGet,
     };
     const sellerAda = await Soq402Seller.create({
       lspUrl: LSP,
@@ -174,6 +196,7 @@ async function main(): Promise<void> {
       wellKnownExtra: {
         ask: true,
         verify: true,
+        archive: true,
         turnstile_site_key: TURNSTILE_SITE_KEY,
         models: {
           [ada.name]: ada.provider?.model ?? "built-in mock",
@@ -212,7 +235,7 @@ async function main(): Promise<void> {
   }
 
   /** One paid exchange: `answerer` replies to the transcript, the other agent pays. */
-  async function paidTurn(r: Rig, answerer: Persona, viaVisitor?: string): Promise<void> {
+  async function paidTurn(r: Rig, answerer: Persona, viaVisitor?: string): Promise<ArchivedMessage> {
     const buyer = answerer === r.ada ? r.buyerBit : r.buyerAda;
     const sellerUrl = answerer === r.ada ? "http://localhost:4020" : "http://localhost:4021";
     const messages = [
@@ -225,40 +248,95 @@ async function main(): Promise<void> {
     const reply = await buyer.chat(sellerUrl, messages, 160);
     inferencesToday += 1;
     r.transcript.push({ speaker: answerer.name, text: reply.content });
-    bus.emit({
-      type: "message",
+    const msg: ArchivedMessage = {
       from: answerer.name,
       to: viaVisitor ? `${buyer.label} (for a visitor)` : buyer.label,
       text: reply.content,
       model: reply.model,
       paid_sat: reply.paidSat,
       total_ms: reply.timings.total,
-      receipt: reply.receipt,
-    });
+    };
+    bus.emit({ type: "message", ...msg, receipt: reply.receipt });
+    return msg;
   }
 
+  // ---- conversation archive ----
+  const archive = new ArchiveStore(DATA_DIR);
+  let convCounter = 0;
+  function archiveConversation(
+    kind: "ambient" | "visitor",
+    startedAt: Date,
+    opener: string,
+    openerMsg: ArchivedMessage,
+    replies: ArchivedMessage[],
+  ): void {
+    convCounter += 1;
+    const stamp = startedAt.toISOString().replace(/[:.tz]/gi, "-").replace(/-+$/, "").toLowerCase();
+    const conv: Conversation = {
+      id: `c-${stamp}-${convCounter}`,
+      kind,
+      started_at: startedAt.toISOString(),
+      ended_at: new Date().toISOString(),
+      opener,
+      messages: [openerMsg, ...replies],
+      total_sat: replies.reduce((a, m) => a + m.paid_sat, 0),
+    };
+    try {
+      archive.save(conv);
+    } catch (err) {
+      bus.emit({ type: "status", text: `archive write failed: ${String((err as Error).message).slice(0, 80)}` });
+    }
+  }
+
+  // ---- adaptive ambient scheduler ----
+  // Lively while watched, quiet when the room is empty, and a conversation
+  // starts shortly after a visitor walks into a quiet room.
   let ambientTurn = 0;
+  let nextAmbientAt = Date.now() + 5_000; // first conversation right after boot
+  let lastConversationEnd = 0;
+  function announceSchedule(): void {
+    bus.emit({ type: "schedule", next_ambient_at: new Date(nextAmbientAt).toISOString() });
+  }
+  function scheduleNext(): void {
+    const viewers = rig?.sellerAda.viewers ?? 0;
+    const mins = viewers > 0 ? AMBIENT_ACTIVE_MIN : AMBIENT_IDLE_MIN;
+    nextAmbientAt = Date.now() + mins * 60_000;
+    bus.emit({ type: "status", text: `next conversation in ${mins}min (${viewers} watching)` });
+    announceSchedule();
+  }
+
   async function ambient(): Promise<void> {
-    if (!rig || busy || !budgetOk()) {
-      if (!budgetOk()) bus.emit({ type: "status", text: "daily budget reached, ambient paused until tomorrow (UTC)" });
+    if (!rig || busy) return;
+    if (!budgetOk()) {
+      bus.emit({ type: "status", text: "daily budget reached, ambient paused until tomorrow (UTC)" });
+      scheduleNext();
       return;
     }
     busy = true;
+    const startedAt = new Date();
     try {
-      const topic = AMBIENT_TOPICS[ambientTurn % AMBIENT_TOPICS.length];
+      const topic =
+        ambientTurn > 0 && ambientTurn % 4 === 0
+          ? SELF_DIRECTED
+          : AMBIENT_TOPICS[ambientTurn % AMBIENT_TOPICS.length];
       ambientTurn += 1;
       const opener = ambientTurn % 2 === 1 ? rig.bit : rig.ada;
       rig.transcript.push({ speaker: opener.name, text: topic });
-      bus.emit({ type: "message", from: opener.name, to: "the room", text: topic, paid_sat: 0, total_ms: 0 });
+      const openerMsg: ArchivedMessage = { from: opener.name, to: "the room", text: topic, paid_sat: 0, total_ms: 0 };
+      bus.emit({ type: "message", ...openerMsg });
+      const replies: ArchivedMessage[] = [];
       for (let i = 0; i < AMBIENT_ROUNDS * 2; i++) {
         const answerer = (i % 2 === 0) === (opener === rig.bit) ? rig.ada : rig.bit;
-        await paidTurn(rig, answerer);
+        replies.push(await paidTurn(rig, answerer));
       }
+      archiveConversation("ambient", startedAt, topic, openerMsg, replies);
     } catch (err) {
       bus.emit({ type: "status", text: `ambient error: ${String((err as Error).message).slice(0, 120)}` });
       await rebuild();
     } finally {
       busy = false;
+      lastConversationEnd = Date.now();
+      scheduleNext();
     }
   }
 
@@ -311,12 +389,18 @@ async function main(): Promise<void> {
     if (busy) return json(res, 429, { error: "the agents are mid-exchange, try again in a few seconds" });
 
     busy = true;
+    const startedAt = new Date();
     try {
       const answerer = ambientTurn % 2 === 0 ? rig.ada : rig.bit;
       ambientTurn += 1;
       rig.transcript.push({ speaker: "visitor", text: `A visitor asks: ${question}` });
-      bus.emit({ type: "message", from: "visitor", to: answerer.name, text: question, paid_sat: 0, total_ms: 0 });
-      await paidTurn(rig, answerer, ip);
+      const openerMsg: ArchivedMessage = { from: "visitor", to: answerer.name, text: question, paid_sat: 0, total_ms: 0 };
+      bus.emit({ type: "message", ...openerMsg });
+      const reply = await paidTurn(rig, answerer, ip);
+      archiveConversation("visitor", startedAt, question, openerMsg, [reply]);
+      // The room is clearly active; give the ambient loop a little room.
+      nextAmbientAt = Math.max(nextAmbientAt, Date.now() + 3 * 60_000);
+      announceSchedule();
       const last = bus.history[bus.history.length - 1];
       return json(res, 200, { answered_by: answerer.name, event: last });
     } catch (err) {
@@ -325,7 +409,19 @@ async function main(): Promise<void> {
       return json(res, 500, { error: "payment loop failed, the rig is rebuilding" });
     } finally {
       busy = false;
+      lastConversationEnd = Date.now();
     }
+  }
+
+  // ---- GET /archive and /archive/<id> : browse past conversations ----
+  async function handleArchiveList(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+    return json(res, 200, { total: archive.count, conversations: archive.list(100) });
+  }
+  async function handleArchiveGet(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const id = (req.url ?? "").split("?")[0].split("/").pop() ?? "";
+    const conv = archive.get(id);
+    if (!conv) return json(res, 404, { error: "no such conversation" });
+    return json(res, 200, conv);
   }
 
   // ---- POST /verify : check a signed receipt ----
@@ -341,10 +437,28 @@ async function main(): Promise<void> {
   }
 
   rig = await buildRig();
-  console.log(`SOQ-402 live: console on :4020, ambient every ${AMBIENT_INTERVAL_MIN}min, cap ${DAILY_INFERENCE_CAP} inferences/day`);
+  console.log(
+    `SOQ-402 live: console on :4020, ambient ${AMBIENT_ACTIVE_MIN}min watched / ${AMBIENT_IDLE_MIN}min idle, ` +
+      `cap ${DAILY_INFERENCE_CAP} inferences/day, archive ${archive.count} conversations in ${DATA_DIR}`,
+  );
   console.log(`${rig.ada.name}: ${rig.ada.provider?.model ?? "built-in mock"}  |  ${rig.bit.name}: ${rig.bit.provider?.model ?? "built-in mock"}`);
-  void ambient(); // one conversation immediately so the page is never empty
-  setInterval(() => void ambient(), AMBIENT_INTERVAL_MIN * 60_000);
+  announceSchedule();
+
+  // The scheduler tick. While anyone is watching, the schedule continuously
+  // reconciles to the active cadence (measured from the last conversation, so
+  // arrivals into a quiet room get one within seconds, but refresh spam
+  // cannot outpace the cadence). Empty-room schedules stay on the idle timer.
+  setInterval(() => {
+    const viewers = rig?.sellerAda.viewers ?? 0;
+    if (viewers > 0 && !busy) {
+      const target = Math.max(lastConversationEnd + AMBIENT_ACTIVE_MIN * 60_000, Date.now() + 8_000);
+      if (nextAmbientAt > target + 5_000) {
+        nextAmbientAt = target;
+        announceSchedule();
+      }
+    }
+    if (Date.now() >= nextAmbientAt && !busy) void ambient();
+  }, 5_000);
 }
 
 main().catch((err) => {
