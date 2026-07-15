@@ -203,7 +203,7 @@ footer a:hover{color:var(--text)}
     <div id="archive-banner" class="hidden">Viewing an archived conversation ·
       <span id="archive-when"></span> · <button id="back-live">Return to live</button></div>
     <div id="conv"></div>
-    <div id="conv-next">next conversation <b id="cd-conv">–</b> · or ask the agents anytime</div>
+    <div id="conv-next">next conversation <b id="cd-conv">–</b> · ask the agents anytime · earlier talks are in the archive</div>
   </section>
 
   <aside id="instruments" aria-label="Payment instruments">
@@ -366,8 +366,13 @@ function onEvent(e) {
     aggregate();
     if (e.receipt) receipts.set(e.seq, e.receipt);
     if (e.from !== "visitor" && !firstSpeaker) firstSpeaker = e.from;
+    // The live pane shows ONE conversation at a time: an opener (an agent's
+    // topic or a visitor's question) clears the finished exchange, which is
+    // already in the archive. This also collapses the SSE backfill down to
+    // just the newest conversation on page load.
+    if (e.paid_sat === 0 && $("conv").children.length) $("conv").innerHTML = "";
     $("conv").insertAdjacentHTML("beforeend", txHtml(e, e.receipt ? e.seq : null, firstSpeaker));
-    // Long-running tabs: older messages leave the DOM (they live in the archive).
+    // Backstop for pathological streams with no opener in sight.
     while ($("conv").children.length > 80) $("conv").removeChild($("conv").firstChild);
     // Follow the conversation only for live arrivals, and only if the reader
     // is already near it; never yank the page on load or mid-read.
