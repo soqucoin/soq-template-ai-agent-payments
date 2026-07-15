@@ -21,9 +21,9 @@ const toHex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 
 export interface BuyerOptions {
   lspUrl: string;
-  /** Refuse any single invoice above this, in satoshis. */
+  /** Refuse any single invoice above this, in shors. */
   maxPerCallSat?: number;
-  /** Refuse to spend more than this in total, in satoshis. */
+  /** Refuse to spend more than this in total, in shors. */
   budgetSat?: number;
   capacitySat?: number;
   label?: string;
@@ -126,10 +126,10 @@ export class Soq402Buyer {
     const maxPerCall = this.opts.maxPerCallSat ?? 10_000;
     const budget = this.opts.budgetSat ?? 1_000_000;
     if (pay.amount_sat > maxPerCall) {
-      throw new Error(`guard: invoice ${pay.amount_sat} sat exceeds per-call cap ${maxPerCall} sat`);
+      throw new Error(`guard: invoice ${pay.amount_sat} shors exceeds per-call cap ${maxPerCall} shors`);
     }
     if (this.spentSat + pay.amount_sat > budget) {
-      throw new Error(`guard: paying ${pay.amount_sat} sat would exceed session budget ${budget} sat`);
+      throw new Error(`guard: paying ${pay.amount_sat} shors would exceed session budget ${budget} shors`);
     }
     if (this.opts.pinSellerKey !== false) {
       if (this.pinnedSellerPub && this.pinnedSellerPub !== pay.seller_pub) {

@@ -17,7 +17,7 @@ export interface Receipt {
   v: 1;
   /** The LSP invoice this receipt settles. */
   invoice_id: string;
-  /** Amount actually paid, in satoshis. */
+  /** Amount actually paid, in shors. */
   amount_sat: number;
   /** Model that served the request. */
   model: string;

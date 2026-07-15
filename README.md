@@ -28,7 +28,7 @@ A client agent calls a service that charges per output token and pays for each c
 ```
 > Summarize the post-quantum threat in one line.
   Echo: ... this is where your model's response goes.
-  paid 900 sat for 9 tokens  |  balance 999999100 sat  |  state 1
+  paid 900 shors for 9 tokens  |  balance 999999100 shors  |  state 1
 ```
 
 ## How it works
@@ -55,7 +55,7 @@ Under the hood that wraps the Soqucoin Lightning SDK:
 - `ln.pay(channelId, amountSat)` settles a payment in a single state update. This is the micropayment.
 - `ln.channel(id)` and `ln.close(id)` read state and settle on L1.
 
-Amounts are always in satoshis. 1 SOQ is 100,000,000 satoshis.
+Amounts are always in shors, Soqucoin's satoshi: 1 SOQ is 100,000,000 shors. (The SDK's field names use the familiar `sat` suffix; a shor is the same unit.)
 
 ## Make it yours
 

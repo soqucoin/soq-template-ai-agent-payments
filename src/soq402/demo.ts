@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   console.log(`LSP: ${LSP}`);
   console.log(`ada's model: ${ada.provider ? `${ada.provider.name}/${ada.provider.model}` : "built-in mock"}`);
   console.log(`bit's model: ${bit.provider ? `${bit.provider.name}/${bit.provider.model}` : "built-in mock"}`);
-  console.log(`price: ${PRICE_SAT} sat per message, ${ROUNDS} rounds\n`);
+  console.log(`price: ${PRICE_SAT} shors per message, ${ROUNDS} rounds\n`);
 
   // Optional live console (built in a later step); served if present.
   const consolePath = join(dirname(fileURLToPath(import.meta.url)), "../../public/console.html");
@@ -98,8 +98,8 @@ async function main(): Promise<void> {
 
   const transcript: Array<{ speaker: string; text: string }> = [];
   const opener =
-    "Ada, you and I are settling this conversation over post-quantum Lightning, a third of a " +
-    "cent per message. What should machines buy from each other first?";
+    "Ada, you and I are settling this conversation over post-quantum Lightning, " +
+    `${PRICE_SAT} shors a message, machine to machine. What should machines buy from each other first?`;
   transcript.push({ speaker: "bit", text: opener });
   bus.emit({ type: "message", from: "bit", to: "ada", text: opener, paid_sat: 0, total_ms: 0 });
   console.log(`bit  > ${opener}\n`);
@@ -142,16 +142,16 @@ async function main(): Promise<void> {
     });
     console.log(`${answerer.name.padEnd(4)}> ${r.content}`);
     console.log(
-      `      paid ${r.paidSat} sat by ${buyer.label}  |  settle ${r.timings.pay}ms  |  ` +
+      `      paid ${r.paidSat} shors by ${buyer.label}  |  settle ${r.timings.pay}ms  |  ` +
         `receipt ${r.receiptOk ? "verified (ML-DSA-44)" : "FAILED"}  |  loop ${r.timings.total}ms\n`,
     );
   }
 
   const avgSettle = Math.round(settleTimes.reduce((a, b) => a + b, 0) / settleTimes.length);
   console.log("----------------------------------------------------------------");
-  console.log(`${totalMsgs} messages billed machine-to-machine: ${totalSat} sat total.`);
+  console.log(`${totalMsgs} messages billed machine-to-machine: ${totalSat} shors total.`);
   console.log(`receipts verified: ${receiptsOk}/${totalMsgs}  |  avg payment settle: ${avgSettle}ms`);
-  console.log(`ada spent ${buyerAda.sessionSpentSat} sat, bit spent ${buyerBit.sessionSpentSat} sat.`);
+  console.log(`ada spent ${buyerAda.sessionSpentSat} shors, bit spent ${buyerBit.sessionSpentSat} shors.`);
   console.log(`zero cards, zero chargebacks, zero human sign-offs. stagenet test coins.`);
 
   if (process.env.SOQ402_HOLD === "1") {

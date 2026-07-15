@@ -20,7 +20,7 @@ const toHex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 export interface AgentOptions {
   /** Stagenet LSP base URL. If omitted, the agent runs a LOCAL simulation. */
   lspUrl?: string;
-  /** Channel capacity in satoshis. 1 SOQ = 100,000,000 sat. Default 10 SOQ. */
+  /** Channel capacity in shors (Soqucoin's satoshi). 1 SOQ = 100,000,000 shors. Default 10 SOQ. */
   capacitySat?: number;
   /** Explicit L1 settlement address. Defaults to one derived from the agent key. */
   settlementAddress?: string;
@@ -82,7 +82,7 @@ export class PayPerCallAgent {
   /** Pay for one unit of work. Returns the channel state after settlement. */
   async pay(amountSat: number): Promise<PaymentResult> {
     if (!Number.isInteger(amountSat) || amountSat <= 0) {
-      throw new Error("amount must be a positive integer number of satoshis");
+      throw new Error("amount must be a positive integer number of shors");
     }
 
     if (!this.live) {
@@ -114,7 +114,7 @@ export class PayPerCallAgent {
   async bill(amountSat: number, memo = ""): Promise<{ invoiceId: string; uri: string }> {
     if (!this.live) throw new Error("billing requires LIVE mode (pass an lspUrl)");
     if (!Number.isInteger(amountSat) || amountSat <= 0) {
-      throw new Error("amount must be a positive integer number of satoshis");
+      throw new Error("amount must be a positive integer number of shors");
     }
     const inv = await this.ln!.createInvoice(this.channelId!, amountSat, { memo });
     return { invoiceId: inv.invoice_id, uri: inv.uri };
@@ -141,7 +141,7 @@ export class PayPerCallAgent {
     return inv.status === "paid";
   }
 
-  /** Current spendable balance in satoshis. */
+  /** Current spendable balance in shors. */
   async balanceSat(): Promise<number> {
     if (!this.live) return this.localBalance;
     const ch = await this.ln!.channel(this.channelId!);

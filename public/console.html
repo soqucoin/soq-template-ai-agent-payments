@@ -80,7 +80,7 @@ footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);fo
       <div class="k">Session</div>
       <div class="bigrow">
         <div class="cell"><div class="n" id="agg-msgs">0</div><div class="l">messages billed</div></div>
-        <div class="cell"><div class="n" id="agg-sat">0</div><div class="l">sat settled</div></div>
+        <div class="cell"><div class="n" id="agg-sat">0</div><div class="l">shors settled</div></div>
         <div class="cell"><div class="n" id="agg-receipts">0/0</div><div class="l">receipts verified</div></div>
         <div class="cell"><div class="n" id="agg-settle">–</div><div class="l">avg settle</div></div>
       </div>
@@ -88,16 +88,16 @@ footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);fo
     <div class="agents">
       <div class="card agent" id="agent-ada">
         <div class="k">ada</div>
-        <div class="row"><span>wallet spent</span><b class="spent">0 sat</b></div>
+        <div class="row"><span>wallet spent</span><b class="spent">0 shors</b></div>
         <div class="row"><span>wallet balance</span><b class="balance">–</b></div>
-        <div class="row"><span>service earned</span><b class="earned">0 sat</b></div>
+        <div class="row"><span>service earned</span><b class="earned">0 shors</b></div>
         <div class="row"><span>channel state</span><b class="state">–</b></div>
       </div>
       <div class="card agent" id="agent-bit">
         <div class="k">bit</div>
-        <div class="row"><span>wallet spent</span><b class="spent">0 sat</b></div>
+        <div class="row"><span>wallet spent</span><b class="spent">0 shors</b></div>
         <div class="row"><span>wallet balance</span><b class="balance">–</b></div>
-        <div class="row"><span>service earned</span><b class="earned">0 sat</b></div>
+        <div class="row"><span>service earned</span><b class="earned">0 shors</b></div>
         <div class="row"><span>channel state</span><b class="state">–</b></div>
       </div>
     </div>
@@ -115,7 +115,7 @@ footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);fo
 </footer>
 <script>
 const $ = (id) => document.getElementById(id);
-const sat = (n) => n.toLocaleString("en-US") + " sat";
+const sat = (n) => n.toLocaleString("en-US") + " shors";
 let msgs = 0, totalSat = 0, receiptsOk = 0, receiptsAll = 0;
 const settles = [];
 

@@ -29,13 +29,13 @@ export interface SellerOptions {
   /** Stagenet LSP base URL, e.g. https://lsp.soqu.org */
   lspUrl: string;
   port?: number;
-  /** Flat price per inference, in satoshis. Ignored if pricePer1kTokensSat is set. */
+  /** Flat price per inference, in shors. Ignored if pricePer1kTokensSat is set. */
   pricePerCallSat?: number;
   /** Per-1K-token pricing: the quote covers estimated prompt tokens + max_tokens. */
   pricePer1kTokensSat?: number;
   /** OpenAI-compatible upstream. Unset = built-in mock. */
   upstream?: { baseUrl: string; apiKey?: string; model?: string };
-  /** Channel capacity in satoshis. */
+  /** Channel capacity in shors. */
   capacitySat?: number;
   /** Serve this HTML file at / (the live console). */
   consolePath?: string;
@@ -93,7 +93,7 @@ export class Soq402Seller {
     return seller;
   }
 
-  /** Quote a price in satoshis for one request. */
+  /** Quote a price in shors for one request. */
   quoteSat(req: ChatRequest): number {
     if (this.opts.pricePer1kTokensSat) {
       const promptTokens = estimateTokens(req.messages.map((m) => m.content).join(" "));
