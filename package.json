@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "tsc && node dist/demo.js",
     "demo": "npm start",
-    "soq402": "tsc && node dist/soq402/demo.js"
+    "soq402": "tsc && node dist/soq402/demo.js",
+    "soq402:live": "tsc && node dist/soq402/live.js"
   },
   "keywords": [
     "soqucoin",
