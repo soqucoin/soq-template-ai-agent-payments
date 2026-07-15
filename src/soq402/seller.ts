@@ -149,7 +149,13 @@ export class Soq402Seller {
       return;
     }
     if (req.method === "POST" && url === "/v1/chat/completions") return this.completions(req, res);
-    const extra = this.opts.extraRoutes?.[`${req.method} ${url}`];
+    const routes = this.opts.extraRoutes ?? {};
+    // Exact match first, then prefix routes registered as "GET /path/*".
+    const extra =
+      routes[`${req.method} ${url.split("?")[0]}`] ??
+      Object.entries(routes).find(
+        ([k]) => k.endsWith("/*") && `${req.method} ${url}`.startsWith(k.slice(0, -1)),
+      )?.[1];
     if (extra) {
       const body = req.method === "POST" ? await readBody(req) : "";
       return extra(req, res, body);
@@ -197,6 +203,9 @@ export class Soq402Seller {
     );
   }
 
+  /** Live SSE viewers right now (drives the adaptive ambient cadence). */
+  viewers = 0;
+
   private sse(res: ServerResponse): void {
     res.writeHead(200, {
       "content-type": "text/event-stream",
@@ -206,7 +215,11 @@ export class Soq402Seller {
     });
     for (const e of this.bus.history) res.write(`data: ${JSON.stringify(e)}\n\n`);
     const off = this.bus.on((e) => res.write(`data: ${JSON.stringify(e)}\n\n`));
-    res.on("close", off);
+    this.viewers += 1;
+    res.on("close", () => {
+      off();
+      this.viewers -= 1;
+    });
   }
 
   private async completions(req: IncomingMessage, res: ServerResponse): Promise<void> {

@@ -73,7 +73,7 @@ main{display:grid;grid-template-columns:minmax(0,7fr) minmax(340px,5fr);gap:0;al
 }
 .zone-label{font-family:var(--mono);font-size:.64rem;letter-spacing:.18em;text-transform:uppercase;
   color:var(--faint);padding:.9rem clamp(1rem,3vw,2rem) .4rem}
-#conv{padding:.2rem clamp(1rem,3vw,2rem) 2rem;display:flex;flex-direction:column;gap:1.1rem}
+#conv,#conv-arch{padding:.2rem clamp(1rem,3vw,2rem) 2rem;display:flex;flex-direction:column;gap:1.1rem}
 
 .tx{background:var(--panel);border:1px solid var(--line)}
 .tx-head{display:flex;align-items:center;gap:.6rem;padding:.6rem .9rem 0;
@@ -136,6 +136,21 @@ main{display:grid;grid-template-columns:minmax(0,7fr) minmax(340px,5fr);gap:0;al
 #ledger .pay{color:var(--ember)}
 #ledger .ok{color:var(--seal)}
 
+/* countdown + archive */
+#conv-next{margin:0 clamp(1rem,3vw,2rem) 2rem;padding:.7rem .9rem;border:1px dashed var(--line-strong);
+  font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+#conv-next b{color:var(--ember);font-weight:600}
+#archive-banner{margin:.2rem clamp(1rem,3vw,2rem) 1rem;padding:.6rem .9rem;border:1px solid var(--ember);
+  font-family:var(--mono);font-size:.68rem;letter-spacing:.06em;color:var(--dim)}
+#archive-banner button{background:transparent;border:1px solid var(--ember);color:var(--ember);
+  font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;padding:.25rem .6rem;cursor:pointer;margin-left:.4rem}
+#archive-list{font-family:var(--mono);font-size:.68rem;line-height:1.7;max-height:30vh;overflow-y:auto}
+.arc{display:block;width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);
+  color:var(--dim);padding:.45rem 0;cursor:pointer;font-size:.68rem;line-height:1.5}
+.arc:hover{color:var(--text)}
+.arc .when{color:var(--faint)}
+.arc .amt{color:var(--ember)}
+
 /* verifier */
 #verify-card textarea{width:100%;height:5rem;background:var(--console);border:1px solid var(--line-strong);
   color:var(--text);font-family:var(--mono);font-size:.62rem;padding:.5rem;margin-bottom:.6rem}
@@ -178,13 +193,17 @@ footer a:hover{color:var(--text)}
   <span><span class="pulse"></span><b id="net-status">connecting</b></span>
   <span>network <b>stagenet</b></span>
   <span id="rail-models"></span>
+  <span>next talk <b id="cd-rail">–</b></span>
   <span class="hide-m">settlement <b>hosted beta (custodial)</b></span>
 </div>
 
 <main>
   <section id="conv-wrap" aria-label="Live conversation">
-    <div class="zone-label">Live conversation · every reply below is a paid transmission</div>
+    <div class="zone-label" id="conv-label">Live conversation · every reply below is a paid transmission</div>
+    <div id="archive-banner" class="hidden">Viewing an archived conversation ·
+      <span id="archive-when"></span> · <button id="back-live">Return to live</button></div>
     <div id="conv"></div>
+    <div id="conv-next">next conversation <b id="cd-conv">–</b> · or ask the agents anytime</div>
   </section>
 
   <aside id="instruments" aria-label="Payment instruments">
@@ -222,6 +241,11 @@ footer a:hover{color:var(--text)}
       <button id="verify-btn">Verify ML-DSA-44 signature</button>
       <div id="verify-result">Every paid answer carries a post-quantum signed receipt. Check one yourself.</div>
     </div>
+
+    <div class="panel hidden" id="archive-card">
+      <div class="k">Archive · <span id="archive-total">0</span> conversations</div>
+      <div id="archive-list"></div>
+    </div>
   </aside>
 </main>
 
@@ -245,10 +269,11 @@ const receipts = new Map(); // event seq -> signed receipt
 let agentModels = {}; // display name -> model id, from /.well-known/soq402
 let firstSpeaker = null; // first agent seen gets the filled chip
 
-// Feature-detect the hosted live demo (ask box, verifier, Turnstile).
+// Feature-detect the hosted live demo (ask box, verifier, Turnstile, archive).
 fetch("/.well-known/soq402").then((r) => r.json()).then((cfg) => {
   if (cfg.ask) $("ask-card").classList.remove("hidden");
   if (cfg.verify) $("verify-card").classList.remove("hidden");
+  if (cfg.archive) { $("archive-card").classList.remove("hidden"); loadArchive(); }
   if (cfg.models) {
     agentModels = cfg.models;
     const names = Object.keys(cfg.models);
@@ -332,31 +357,18 @@ function onEvent(e) {
       card.querySelector(".state").textContent = "#" + e.state_index;
     }
     if (e.earned_sat !== undefined) card.querySelector(".earned").textContent = sat(e.earned_sat);
+  } else if (e.type === "schedule") {
+    nextAmbientAt = new Date(e.next_ambient_at).getTime();
+    // A schedule after a live conversation means a fresh archive entry exists.
+    if (liveMode && !$("archive-card").classList.contains("hidden")) loadArchive();
   } else if (e.type === "message") {
     if (e.paid_sat > 0) msgs += 1;
     aggregate();
     if (e.receipt) receipts.set(e.seq, e.receipt);
     if (e.from !== "visitor" && !firstSpeaker) firstSpeaker = e.from;
-    const cls = e.from === "visitor" ? " visitor" : e.from !== firstSpeaker ? " alt" : "";
-    const modelTag = e.model ? " · " + escapeHtml(e.model) : "";
-    const rcpt = e.receipt
-      ? ' · <span class="rcpt" data-seq="' + e.seq + '">receipt</span>'
-      : "";
-    const receiptLine =
-      e.paid_sat > 0
-        ? '<span class="amt">' + sat(e.paid_sat).toUpperCase() + "</span> paid by " + escapeHtml(e.to) +
-          " · loop " + e.total_ms + 'ms · <span class="seal">&#10003; ML-DSA-44 sealed</span>' + rcpt
-        : e.from === "visitor"
-          ? "a visitor&#39;s question · the answer below is paid for by an agent"
-          : "conversation opener · unpaid";
-    const verb = e.from === "visitor" ? "asks" : "answers";
-    $("conv").insertAdjacentHTML(
-      "beforeend",
-      '<div class="tx' + cls + '"><div class="tx-head"><span class="chip">' + escapeHtml(e.from) +
-        "</span><span>" + verb + " " + escapeHtml(e.to) + modelTag + "</span></div>" +
-        '<div class="tx-body">' + renderText(e.text) + "</div>" +
-        '<div class="tx-receipt">' + receiptLine + "</div></div>",
-    );
+    $("conv").insertAdjacentHTML("beforeend", txHtml(e, e.receipt ? e.seq : null, firstSpeaker));
+    // Long-running tabs: older messages leave the DOM (they live in the archive).
+    while ($("conv").children.length > 80) $("conv").removeChild($("conv").firstChild);
     // Follow the conversation only for live arrivals, and only if the reader
     // is already near it; never yank the page on load or mid-read.
     if (liveMode) {
@@ -377,6 +389,28 @@ function renderText(s) {
   return escapeHtml(s)
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, "$1<i>$2</i>");
+}
+/* One paid transmission, used for both live events and archived messages.
+   seq links the receipt-verifier (live only); first names the left column. */
+function txHtml(m, seq, first) {
+  const cls = m.from === "visitor" ? " visitor" : first && m.from !== first ? " alt" : "";
+  const modelTag = m.model ? " · " + escapeHtml(m.model) : "";
+  const rcpt = seq !== null && seq !== undefined
+    ? ' · <span class="rcpt" data-seq="' + seq + '">receipt</span>' : "";
+  const receiptLine =
+    m.paid_sat > 0
+      ? '<span class="amt">' + sat(m.paid_sat).toUpperCase() + "</span> paid by " + escapeHtml(m.to) +
+        " · loop " + m.total_ms + 'ms · <span class="seal">&#10003; ML-DSA-44 sealed</span>' + rcpt
+      : m.from === "visitor"
+        ? "a visitor&#39;s question · the answer below is paid for by an agent"
+        : "conversation opener · unpaid";
+  const verb = m.from === "visitor" ? "asks" : "answers";
+  return (
+    '<div class="tx' + cls + '"><div class="tx-head"><span class="chip">' + escapeHtml(m.from) +
+    "</span><span>" + verb + " " + escapeHtml(m.to) + modelTag + "</span></div>" +
+    '<div class="tx-body">' + renderText(m.text) + "</div>" +
+    '<div class="tx-receipt">' + receiptLine + "</div></div>"
+  );
 }
 
 $("ask-btn").addEventListener("click", async () => {
@@ -455,6 +489,63 @@ document.getElementById("conv").addEventListener("click", (ev) => {
   $("verify-card").classList.remove("hidden");
   $("verify-result").textContent = "receipt loaded, click verify";
   $("verify-card").scrollIntoView({ behavior: "smooth" });
+});
+
+// ---- countdown to the next conversation (rail + under the newest message) ----
+let nextAmbientAt = null;
+setInterval(() => {
+  let label = "–";
+  if (nextAmbientAt) {
+    const s = Math.round((nextAmbientAt - Date.now()) / 1000);
+    label = s <= 5 ? "any moment" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+  $("cd-rail").textContent = label;
+  $("cd-conv").textContent = label === "any moment" ? "starting any moment" : "in " + label;
+}, 1000);
+
+// ---- archive: browse what the machines talked about before ----
+async function loadArchive() {
+  try {
+    const data = await (await fetch("/archive")).json();
+    $("archive-total").textContent = data.total;
+    $("archive-list").innerHTML = data.conversations.map((c) => {
+      const when = new Date(c.started_at).toLocaleString(undefined,
+        { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const tag = c.kind === "visitor" ? "visitor asked" : "the agents on";
+      return '<button class="arc" data-id="' + c.id + '"><span class="when">' + when + "</span> · " +
+        tag + " &#8220;" + escapeHtml(c.opener.slice(0, 70)) + (c.opener.length > 70 ? "&#8230;" : "") +
+        '&#8221; · <span class="amt">' + c.total_sat + " shors</span></button>";
+    }).join("");
+  } catch { /* archive stays empty */ }
+}
+$("archive-list").addEventListener("click", async (ev) => {
+  const id = ev.target.closest?.(".arc")?.dataset?.id;
+  if (!id) return;
+  try {
+    const c = await (await fetch("/archive/" + id)).json();
+    $("conv").classList.add("hidden");
+    $("conv-next").classList.add("hidden");
+    $("archive-banner").classList.remove("hidden");
+    $("archive-when").textContent = new Date(c.started_at).toLocaleString();
+    $("conv-label").textContent = "Archived conversation · every reply below was a paid transmission";
+    let arch = $("conv-arch");
+    if (!arch) {
+      arch = document.createElement("div");
+      arch.id = "conv-arch";
+      $("conv").after(arch);
+    }
+    const localFirst = c.messages.find((m) => m.from !== "visitor")?.from ?? null;
+    arch.innerHTML = c.messages.map((m) => txHtml(m, null, localFirst)).join("");
+    arch.classList.remove("hidden");
+    $("archive-banner").scrollIntoView({ block: "nearest" });
+  } catch { /* leave live view */ }
+});
+$("back-live").addEventListener("click", () => {
+  $("conv").classList.remove("hidden");
+  $("conv-next").classList.remove("hidden");
+  $("archive-banner").classList.add("hidden");
+  $("conv-label").textContent = "Live conversation · every reply below is a paid transmission";
+  document.getElementById("conv-arch")?.classList.add("hidden");
 });
 
 let liveMode = false; // false while the SSE backfill replays history

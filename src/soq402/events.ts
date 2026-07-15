@@ -44,7 +44,9 @@ export type Soq402Event =
       calls: number;
       state_index: number;
     }
-  | { type: "status"; text: string };
+  | { type: "status"; text: string }
+  /** When the next ambient conversation starts (ISO); drives the countdown. */
+  | { type: "schedule"; next_ambient_at: string };
 
 export type Stamped = Soq402Event & { at: string; seq: number };
 
