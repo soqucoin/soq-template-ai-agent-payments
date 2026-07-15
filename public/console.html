@@ -100,22 +100,7 @@ footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);fo
         <div class="cell"><div class="n" id="agg-settle">–</div><div class="l">avg settle</div></div>
       </div>
     </div>
-    <div class="agents">
-      <div class="card agent" id="agent-ada">
-        <div class="k">ada</div>
-        <div class="row"><span>wallet spent</span><b class="spent">0 shors</b></div>
-        <div class="row"><span>wallet balance</span><b class="balance">–</b></div>
-        <div class="row"><span>service earned</span><b class="earned">0 shors</b></div>
-        <div class="row"><span>channel state</span><b class="state">–</b></div>
-      </div>
-      <div class="card agent" id="agent-bit">
-        <div class="k">bit</div>
-        <div class="row"><span>wallet spent</span><b class="spent">0 shors</b></div>
-        <div class="row"><span>wallet balance</span><b class="balance">–</b></div>
-        <div class="row"><span>service earned</span><b class="earned">0 shors</b></div>
-        <div class="row"><span>channel state</span><b class="state">–</b></div>
-      </div>
-    </div>
+    <div class="agents" id="agents"></div>
     <div class="card">
       <div class="k">Payment ledger</div>
       <div id="ledger"></div>
@@ -141,13 +126,16 @@ let msgs = 0, totalSat = 0, receiptsOk = 0, receiptsAll = 0;
 const settles = [];
 const receipts = new Map(); // event seq -> signed receipt
 
+let agentModels = {}; // display name -> model id, from /.well-known/soq402
+let firstSpeaker = null; // first agent seen speaks from the left column
+
 // Feature-detect the hosted live demo (ask box, verifier, Turnstile).
 fetch("/.well-known/soq402").then((r) => r.json()).then((cfg) => {
   if (cfg.ask) $("ask-card").classList.remove("hidden");
   if (cfg.verify) $("verify-card").classList.remove("hidden");
   if (cfg.models) {
-    document.querySelector("#agent-ada .k").textContent = "ada · " + cfg.models.ada;
-    document.querySelector("#agent-bit .k").textContent = "bit · " + cfg.models.bit;
+    agentModels = cfg.models;
+    for (const name of Object.keys(cfg.models)) agentCard(name); // render both up front
   }
   if (cfg.turnstile_site_key) {
     const s = document.createElement("script");
@@ -230,7 +218,23 @@ function ledger(html) {
   while (el.childNodes.length > 120) el.removeChild(el.lastChild);
 }
 function agentCard(name) {
-  return document.getElementById("agent-" + name);
+  const id = "agent-" + name.toLowerCase().replace(/[^a-z0-9-]/g, "");
+  let card = document.getElementById(id);
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "card agent";
+    card.id = id;
+    card.innerHTML =
+      '<div class="k"></div>' +
+      '<div class="row"><span>wallet spent</span><b class="spent">0 shors</b></div>' +
+      '<div class="row"><span>wallet balance</span><b class="balance">–</b></div>' +
+      '<div class="row"><span>service earned</span><b class="earned">0 shors</b></div>' +
+      '<div class="row"><span>channel state</span><b class="state">–</b></div>';
+    const model = agentModels[name];
+    card.querySelector(".k").textContent = model ? name + " · " + model : name;
+    $("agents").appendChild(card);
+  }
+  return card;
 }
 function aggregate() {
   $("agg-msgs").textContent = msgs;
@@ -261,8 +265,7 @@ function onEvent(e) {
     ledger((e.ok ? '<span class="ok">verified</span>' : "FAILED") + " by " + e.verifier + " · " + e.verify_ms + "ms");
     aggregate();
   } else if (e.type === "meter") {
-    const card = agentCard(e.agent.replace("-service", ""));
-    if (!card) return;
+    const card = agentCard(e.agent.replace(/-service$/, ""));
     if (e.spent_sat !== undefined) {
       card.querySelector(".spent").textContent = sat(e.spent_sat);
       card.querySelector(".balance").textContent = sat(e.balance_sat);
@@ -273,7 +276,8 @@ function onEvent(e) {
     if (e.paid_sat > 0) msgs += 1;
     aggregate();
     if (e.receipt) receipts.set(e.seq, e.receipt);
-    const side = e.from === "visitor" ? " visitor" : e.from === "bit" ? " right" : "";
+    if (e.from !== "visitor" && !firstSpeaker) firstSpeaker = e.from;
+    const side = e.from === "visitor" ? " visitor" : e.from !== firstSpeaker ? " right" : "";
     const modelTag = e.model ? " · " + escapeHtml(e.model) : "";
     const rcpt = e.receipt
       ? ' · <span class="rcpt" data-seq="' + e.seq + '">receipt</span>'

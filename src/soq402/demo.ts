@@ -16,7 +16,7 @@ import "dotenv/config";
 import { EventBus } from "./events.js";
 import { Soq402Seller } from "./seller.js";
 import { Soq402Buyer } from "./buyer.js";
-import { detectProviders, type Provider } from "./providers.js";
+import { agentNames, detectProviders, type Provider } from "./providers.js";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,25 +35,27 @@ async function main(): Promise<void> {
   const providers = detectProviders();
   const bus = new EventBus();
 
+  // Agents go by their model vendor's name: "Claude paid Grok" lands,
+  // "ada paid bit" does not.
+  const [nameA, nameB] = agentNames(providers[0], providers[1] ?? providers[0]);
   const ada: Persona = {
-    name: "ada",
+    name: nameA,
     system:
-      "You are Ada, a terse, sharp AI agent. You are in a paid conversation: every message " +
-      "the other agent sends you costs them real micropayments, so give value. Two sentences max.",
+      `You are ${nameA}, a terse, sharp AI agent in a paid conversation with ${nameB}: every ` +
+      "message costs the asker real micropayments, so give value. Two sentences max.",
     provider: providers[0],
   };
   const bit: Persona = {
-    name: "bit",
+    name: nameB,
     system:
-      "You are Bit, a curious, playful AI agent. You are in a paid conversation: every message " +
-      "the other agent sends you costs them real micropayments, so give value. Two sentences max.",
+      `You are ${nameB}, a curious, playful AI agent in a paid conversation with ${nameA}: every ` +
+      "message costs the asker real micropayments, so give value. Two sentences max.",
     provider: providers[1] ?? providers[0],
   };
 
   console.log(`SOQ-402: machine-to-machine payments demo (stagenet)`);
   console.log(`LSP: ${LSP}`);
-  console.log(`ada's model: ${ada.provider ? `${ada.provider.name}/${ada.provider.model}` : "built-in mock"}`);
-  console.log(`bit's model: ${bit.provider ? `${bit.provider.name}/${bit.provider.model}` : "built-in mock"}`);
+  console.log(`${ada.name}: ${ada.provider?.model ?? "built-in mock"}  |  ${bit.name}: ${bit.provider?.model ?? "built-in mock"}`);
   console.log(`price: ${PRICE_SAT} shors per message, ${ROUNDS} rounds\n`);
 
   // Optional live console (built in a later step); served if present.
@@ -83,14 +85,14 @@ async function main(): Promise<void> {
   // ...and buys the other's with its own wallet, capped and budgeted.
   const buyerAda = await Soq402Buyer.create({
     lspUrl: LSP,
-    label: "ada",
+    label: ada.name,
     maxPerCallSat: 5_000,
     budgetSat: 100_000,
     bus,
   });
   const buyerBit = await Soq402Buyer.create({
     lspUrl: LSP,
-    label: "bit",
+    label: bit.name,
     maxPerCallSat: 5_000,
     budgetSat: 100_000,
     bus,
@@ -98,11 +100,11 @@ async function main(): Promise<void> {
 
   const transcript: Array<{ speaker: string; text: string }> = [];
   const opener =
-    "Ada, you and I are settling this conversation over post-quantum Lightning, " +
+    `${ada.name}, you and I are settling this conversation over post-quantum Lightning, ` +
     `${PRICE_SAT} shors a message, machine to machine. What should machines buy from each other first?`;
-  transcript.push({ speaker: "bit", text: opener });
-  bus.emit({ type: "message", from: "bit", to: "ada", text: opener, paid_sat: 0, total_ms: 0 });
-  console.log(`bit  > ${opener}\n`);
+  transcript.push({ speaker: bit.name, text: opener });
+  bus.emit({ type: "message", from: bit.name, to: ada.name, text: opener, paid_sat: 0, total_ms: 0 });
+  console.log(`${bit.name} > ${opener}\n`);
 
   let totalSat = 0;
   let totalMsgs = 0;
@@ -140,7 +142,7 @@ async function main(): Promise<void> {
       paid_sat: r.paidSat,
       total_ms: r.timings.total,
     });
-    console.log(`${answerer.name.padEnd(4)}> ${r.content}`);
+    console.log(`${answerer.name.padEnd(8)}> ${r.content}`);
     console.log(
       `      paid ${r.paidSat} shors by ${buyer.label}  |  settle ${r.timings.pay}ms  |  ` +
         `receipt ${r.receiptOk ? "verified (ML-DSA-44)" : "FAILED"}  |  loop ${r.timings.total}ms\n`,
@@ -151,7 +153,7 @@ async function main(): Promise<void> {
   console.log("----------------------------------------------------------------");
   console.log(`${totalMsgs} messages billed machine-to-machine: ${totalSat} shors total.`);
   console.log(`receipts verified: ${receiptsOk}/${totalMsgs}  |  avg payment settle: ${avgSettle}ms`);
-  console.log(`ada spent ${buyerAda.sessionSpentSat} shors, bit spent ${buyerBit.sessionSpentSat} shors.`);
+  console.log(`${ada.name} spent ${buyerAda.sessionSpentSat} shors, ${bit.name} spent ${buyerBit.sessionSpentSat} shors.`);
   console.log(`zero cards, zero chargebacks, zero human sign-offs. stagenet test coins.`);
 
   if (process.env.SOQ402_HOLD === "1") {
