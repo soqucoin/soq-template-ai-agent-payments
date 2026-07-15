@@ -27,7 +27,7 @@ export function detectProviders(env: NodeJS.ProcessEnv = process.env): Provider[
       name: "grok",
       baseUrl: "https://api.x.ai/v1",
       apiKey: env.XAI_API_KEY,
-      model: env.XAI_MODEL ?? "grok-3-mini",
+      model: env.XAI_MODEL ?? "grok-4.20-non-reasoning",
     });
   }
   if (env.GEMINI_API_KEY) {

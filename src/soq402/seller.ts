@@ -41,6 +41,18 @@ export interface SellerOptions {
   consolePath?: string;
   bus?: EventBus;
   label?: string;
+  /** Extra HTTP routes, keyed "METHOD /path". Used by the hosted live demo. */
+  extraRoutes?: Record<
+    string,
+    (req: IncomingMessage, res: ServerResponse, body: string) => Promise<void>
+  >;
+  /** Cap unpaid 402 challenges per IP per minute (public deployments: every
+   *  challenge creates an LSP invoice, so unmetered issuance is a spam vector). */
+  challengesPerIpPerMin?: number;
+  /** Trust X-Forwarded-For (set only behind a reverse proxy you control). */
+  trustProxy?: boolean;
+  /** Extra fields merged into /.well-known/soq402 (e.g. { ask: true }). */
+  wellKnownExtra?: Record<string, unknown>;
 }
 
 interface IssuedInvoice {
@@ -63,6 +75,7 @@ export class Soq402Seller {
   private server: Server | null = null;
   private earnedSat = 0;
   private callsServed = 0;
+  private challengeHits = new Map<string, { count: number; windowStart: number }>();
 
   private constructor(
     readonly label: string,
@@ -136,8 +149,36 @@ export class Soq402Seller {
       return;
     }
     if (req.method === "POST" && url === "/v1/chat/completions") return this.completions(req, res);
+    const extra = this.opts.extraRoutes?.[`${req.method} ${url}`];
+    if (extra) {
+      const body = req.method === "POST" ? await readBody(req) : "";
+      return extra(req, res, body);
+    }
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: { message: "not found" } }));
+  }
+
+  /** Client IP for rate limiting; first X-Forwarded-For hop when behind our proxy. */
+  clientIp(req: IncomingMessage): string {
+    if (this.opts.trustProxy) {
+      const fwd = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim();
+      if (fwd) return fwd;
+    }
+    return req.socket.remoteAddress ?? "unknown";
+  }
+
+  private challengeAllowed(ip: string): boolean {
+    const limit = this.opts.challengesPerIpPerMin;
+    if (!limit) return true;
+    const now = Date.now();
+    const hit = this.challengeHits.get(ip);
+    if (!hit || now - hit.windowStart > 60_000) {
+      this.challengeHits.set(ip, { count: 1, windowStart: now });
+      if (this.challengeHits.size > 10_000) this.challengeHits.clear(); // bounded memory
+      return true;
+    }
+    hit.count += 1;
+    return hit.count <= limit;
   }
 
   private wellKnown(res: ServerResponse): void {
@@ -151,6 +192,7 @@ export class Soq402Seller {
           : { mode: "per-call", sat: this.opts.pricePerCallSat ?? 250 },
         lsp: this.opts.lspUrl,
         network: "stagenet",
+        ...this.opts.wellKnownExtra,
       }),
     );
   }
@@ -183,6 +225,11 @@ export class Soq402Seller {
 
     // No payment attached: challenge with 402 + a fresh invoice.
     if (!invoiceId) {
+      if (!this.challengeAllowed(this.clientIp(req))) {
+        res.writeHead(429, { "content-type": "application/json", "retry-after": "60" });
+        res.end(JSON.stringify({ error: { message: "too many unpaid challenges, slow down" } }));
+        return;
+      }
       const amount = this.quoteSat(body);
       const inv = await this.ln.createInvoice(this.channelId, amount, {
         memo: `soq402 inference (${body.messages.length} msgs)`,

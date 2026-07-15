@@ -61,6 +61,14 @@ main{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:0;mi
 footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);font-family:var(--mono);font-size:.68rem;color:var(--muted);line-height:1.7}
 .pulse{display:inline-block;width:.5em;height:.5em;border-radius:50%;background:var(--ok);margin-right:.45em;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.msg.visitor{border-left:2px solid var(--accent);padding-left:1rem}
+.msg .who .rcpt{color:var(--muted);cursor:pointer;text-decoration:underline;text-transform:none;letter-spacing:.02em}
+#ask-card input{width:100%;box-sizing:border-box;background:var(--paper-2);border:1px solid var(--rule);color:var(--ink);font-family:var(--serif);font-size:1rem;padding:.55rem .7rem;margin-bottom:.6rem}
+#ask-card button, #verify-card button{background:var(--accent);color:var(--paper);border:0;font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;padding:.55rem 1rem;cursor:pointer}
+#ask-card button:disabled{opacity:.5;cursor:wait}
+#ask-status, #verify-result{font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-top:.5rem;line-height:1.6}
+#verify-card textarea{width:100%;box-sizing:border-box;height:5.5rem;background:var(--paper-2);border:1px solid var(--rule);color:var(--ink);font-family:var(--mono);font-size:.65rem;padding:.5rem;margin-bottom:.6rem}
+.hidden{display:none}
 </style>
 </head>
 <body>
@@ -76,6 +84,13 @@ footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);fo
 <main>
   <section id="conv"></section>
   <aside id="meter">
+    <div class="card hidden" id="ask-card">
+      <div class="k">Ask the agents</div>
+      <input id="ask-input" maxlength="300" placeholder="Type one question. An AI will pay another AI to answer it, live.">
+      <div id="turnstile-slot"></div>
+      <button id="ask-btn">Ask (an agent pays)</button>
+      <div id="ask-status">Your question rides as a question only; the agents' instructions are pinned.</div>
+    </div>
     <div class="card">
       <div class="k">Session</div>
       <div class="bigrow">
@@ -105,6 +120,12 @@ footer{padding:1.1rem clamp(1.2rem,4vw,3rem);border-top:1px solid var(--rule);fo
       <div class="k">Payment ledger</div>
       <div id="ledger"></div>
     </div>
+    <div class="card hidden" id="verify-card">
+      <div class="k">Verify a receipt</div>
+      <textarea id="verify-input" placeholder='Click "receipt" on any paid message, or paste a signed receipt JSON.'></textarea>
+      <button id="verify-btn">Verify ML-DSA-44 signature</button>
+      <div id="verify-result">Every paid answer carries a post-quantum signed receipt. Verify one yourself.</div>
+    </div>
   </aside>
 </main>
 <footer>
@@ -118,6 +139,90 @@ const $ = (id) => document.getElementById(id);
 const sat = (n) => n.toLocaleString("en-US") + " shors";
 let msgs = 0, totalSat = 0, receiptsOk = 0, receiptsAll = 0;
 const settles = [];
+const receipts = new Map(); // event seq -> signed receipt
+
+// Feature-detect the hosted live demo (ask box, verifier, Turnstile).
+fetch("/.well-known/soq402").then((r) => r.json()).then((cfg) => {
+  if (cfg.ask) $("ask-card").classList.remove("hidden");
+  if (cfg.verify) $("verify-card").classList.remove("hidden");
+  if (cfg.models) {
+    document.querySelector("#agent-ada .k").textContent = "ada · " + cfg.models.ada;
+    document.querySelector("#agent-bit .k").textContent = "bit · " + cfg.models.bit;
+  }
+  if (cfg.turnstile_site_key) {
+    const s = document.createElement("script");
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    s.onload = () => turnstile.render("#turnstile-slot", { sitekey: cfg.turnstile_site_key });
+    document.head.appendChild(s);
+  }
+}).catch(() => {});
+
+$("ask-btn").addEventListener("click", async () => {
+  const q = $("ask-input").value.trim();
+  if (!q) return;
+  $("ask-btn").disabled = true;
+  $("ask-status").textContent = "asking... watch the ledger: 402, pay, inference, receipt";
+  try {
+    const token = window.turnstile ? turnstile.getResponse() : undefined;
+    const resp = await fetch("/ask", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: q, turnstile_token: token }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      $("ask-status").textContent = data.error || ("failed: " + resp.status);
+    } else {
+      $("ask-status").textContent = "answered by " + data.answered_by + ". An AI just paid for your answer.";
+      $("ask-input").value = "";
+    }
+    if (window.turnstile) turnstile.reset();
+  } catch (e) {
+    $("ask-status").textContent = "network error, try again";
+  }
+  $("ask-btn").disabled = false;
+});
+
+async function verifyReceiptInBrowser(signed) {
+  // Recompute the canonical digest, then check ML-DSA-44 in this browser via
+  // @noble/post-quantum. Any failure falls back to the service's /verify.
+  const r = signed.receipt;
+  const ordered = {
+    v: r.v, invoice_id: r.invoice_id, amount_sat: r.amount_sat, model: r.model,
+    request_sha256: r.request_sha256, response_sha256: r.response_sha256,
+    prompt_tokens: r.prompt_tokens, completion_tokens: r.completion_tokens,
+    issued_at: r.issued_at, seller_pub: r.seller_pub,
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(ordered));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const hex2u8 = (h) => Uint8Array.from(h.match(/.{2}/g).map((b) => parseInt(b, 16)));
+  // Same library + arg order the SDK's signer uses: verify(signature, message, publicKey).
+  const { ml_dsa44 } = await import("https://esm.sh/@noble/post-quantum@0.6.1/ml-dsa.js");
+  return ml_dsa44.verify(hex2u8(signed.sig), digest, hex2u8(r.seller_pub));
+}
+
+$("verify-btn").addEventListener("click", async () => {
+  let signed;
+  try { signed = JSON.parse($("verify-input").value); }
+  catch { $("verify-result").textContent = "paste a signed receipt JSON first"; return; }
+  $("verify-result").textContent = "verifying...";
+  try {
+    const ok = await verifyReceiptInBrowser(signed);
+    $("verify-result").innerHTML = ok
+      ? '<span class="ok">VALID</span> — ML-DSA-44 signature verified in your browser (no server involved).'
+      : "INVALID — signature does not match this receipt.";
+  } catch (e) {
+    try {
+      const resp = await fetch("/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(signed) });
+      const data = await resp.json();
+      $("verify-result").innerHTML = data.ok
+        ? '<span class="ok">VALID</span> — verified by the service (browser verifier unavailable).'
+        : "INVALID — signature does not match this receipt.";
+    } catch {
+      $("verify-result").textContent = "verification unavailable";
+    }
+  }
+});
 
 function ledger(html) {
   const el = $("ledger");
@@ -167,17 +272,24 @@ function onEvent(e) {
   } else if (e.type === "message") {
     if (e.paid_sat > 0) msgs += 1;
     aggregate();
-    const side = e.from === "bit" ? " right" : "";
+    if (e.receipt) receipts.set(e.seq, e.receipt);
+    const side = e.from === "visitor" ? " visitor" : e.from === "bit" ? " right" : "";
     const modelTag = e.model ? " · " + escapeHtml(e.model) : "";
+    const rcpt = e.receipt
+      ? ' · <span class="rcpt" data-seq="' + e.seq + '">receipt</span>'
+      : "";
     const bill =
       e.paid_sat > 0
         ? "paid " + sat(e.paid_sat) + " by " + e.to +
-          ' · <span class="ok">receipt verified</span> · loop ' + e.total_ms + "ms"
-        : "conversation opener · unpaid";
+          ' · <span class="ok">receipt verified</span> · loop ' + e.total_ms + "ms" + rcpt
+        : e.from === "visitor"
+          ? "a visitor's question · the next answer is paid for by an agent"
+          : "conversation opener · unpaid";
+    const verb = e.from === "visitor" ? "asks" : "answers";
     $("conv").insertAdjacentHTML(
       "beforeend",
       '<div class="msg' + side + '"><div class="who">' + e.from +
-        ' <span class="model">answers ' + e.to + modelTag + "</span></div>" +
+        ' <span class="model">' + verb + " " + escapeHtml(e.to) + modelTag + "</span></div>" +
         '<div class="text">' + escapeHtml(e.text) + "</div>" +
         '<div class="bill">' + bill + "</div></div>",
     );
@@ -187,6 +299,17 @@ function onEvent(e) {
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+document.getElementById("conv").addEventListener("click", (ev) => {
+  const seq = ev.target?.dataset?.seq;
+  if (seq === undefined) return;
+  const signed = receipts.get(Number(seq));
+  if (!signed) return;
+  $("verify-input").value = JSON.stringify(signed);
+  $("verify-card").classList.remove("hidden");
+  $("verify-result").textContent = "receipt loaded, click verify";
+  $("verify-card").scrollIntoView({ behavior: "smooth" });
+});
+
 const es = new EventSource("/events");
 es.onopen = () => ($("net-status").textContent = "live");
 es.onerror = () => ($("net-status").textContent = "stream disconnected, retrying");

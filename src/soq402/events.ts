@@ -1,3 +1,5 @@
+import type { SignedReceipt } from "./receipt.js";
+
 // Event bus for the SOQ-402 live console.
 // ----------------------------------------
 // Every interesting moment in the payment loop (challenge issued, invoice
@@ -28,6 +30,8 @@ export type Soq402Event =
       /** 0 for the unpaid conversation opener. */
       paid_sat: number;
       total_ms: number;
+      /** The signed receipt for this message, so anyone can verify it. */
+      receipt?: SignedReceipt;
     }
   | {
       type: "meter";
