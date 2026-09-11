@@ -108,7 +108,7 @@ export class PayPerCallAgent {
   /**
    * Bill another agent: create an LSP invoice for a unit of work and hand back
    * its `soqln:` URI. The payer settles it with payInvoice(); this agent's
-   * channel balance grows when it does (custodial hub-hop on the hosted beta).
+   * channel balance grows when it does (the LSP settles as channel counterparty on the test network).
    * LIVE mode only — LOCAL simulation has no counterparty to bill.
    */
   async bill(amountSat: number, memo = ""): Promise<{ invoiceId: string; uri: string }> {

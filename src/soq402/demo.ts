@@ -10,7 +10,7 @@
 // run on real (different!) vendor models. With no keys, a clearly-labelled
 // mock answers so the payment loop still runs end to end.
 //
-// Everything here is stagenet: test coins, hosted-beta custodial settlement.
+// Everything here is stagenet: test coins, settlement through the LSP as channel counterparty.
 
 import "dotenv/config";
 import { EventBus } from "./events.js";
