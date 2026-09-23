@@ -9,7 +9,19 @@ import type { SignedReceipt } from "./receipt.js";
 
 export type Soq402Event =
   | { type: "challenge"; invoice_id: string; amount_sat: number; memo: string }
-  | { type: "paid"; invoice_id: string; amount_sat: number; settle_ms: number; payer: string }
+  | {
+      type: "paid";
+      invoice_id: string;
+      amount_sat: number;
+      settle_ms: number;
+      payer: string;
+      /** "lightning" (default) or "nano". */
+      scheme?: string;
+      /** Nano block hash short (when scheme is "nano"). */
+      block_hash?: string;
+      /** Nano explorer URL (when scheme is "nano"). */
+      explorer?: string;
+    }
   | {
       type: "inference";
       invoice_id: string;
@@ -17,6 +29,8 @@ export type Soq402Event =
       prompt_tokens: number;
       completion_tokens: number;
       upstream_ms: number;
+      /** "lightning" (default) or "nano". */
+      scheme?: string;
     }
   | { type: "receipt"; invoice_id: string; sign_ms: number }
   | { type: "receipt_verified"; invoice_id: string; ok: boolean; verify_ms: number; verifier: string }

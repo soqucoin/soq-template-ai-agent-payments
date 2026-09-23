@@ -9,7 +9,8 @@
     "start": "tsc && node dist/demo.js",
     "demo": "npm start",
     "soq402": "tsc && node dist/soq402/demo.js",
-    "soq402:live": "tsc && node dist/soq402/live.js"
+    "soq402:live": "tsc && node dist/soq402/live.js",
+    "test": "tsc && node --test 'dist/**/*.test.js'"
   },
   "keywords": [
     "soqucoin",

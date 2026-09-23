@@ -22,6 +22,7 @@ import { readFileSync } from "node:fs";
 import { SoqLightning, mlDsaKeygen, onchain } from "soq-lightning-sdk";
 import { EventBus } from "./events.js";
 import { sha256Hex, signReceipt, type Receipt, type SignedReceipt } from "./receipt.js";
+import type { NanoPayment, VerifyResult } from "../nano.js";
 
 const toHex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 
@@ -53,6 +54,14 @@ export interface SellerOptions {
   trustProxy?: boolean;
   /** Extra fields merged into /.well-known/soq402 (e.g. { ask: true }). */
   wellKnownExtra?: Record<string, unknown>;
+  /** Optional Nano (XNO) receive-only payment verifier. When set, the seller
+   *  also accepts payment via the X-Nano-Hash header: the buyer supplies a
+   *  Nano block hash, the seller verifies it against the Nano network (or a
+   *  test stub). Instant, feeless settlement — no bridge, no USDC proxy. */
+  nanoVerifier?: (payment: NanoPayment) => Promise<VerifyResult>;
+  /** Minimum amount accepted for a Nano payment, in raw (10^-30 XNO). When
+   *  unset, any confirmed block that reaches the pay-to account is accepted. */
+  nanoExpectRaw?: string;
 }
 
 interface IssuedInvoice {
@@ -235,6 +244,12 @@ export class Soq402Seller {
     }
 
     const invoiceId = (req.headers["x-soq-invoice"] as string | undefined)?.trim();
+    const nanoHash = (req.headers["x-nano-hash"] as string | undefined)?.trim();
+
+    // Check if the request carries a Nano (XNO) payment hash.
+    if (nanoHash && this.opts.nanoVerifier) {
+      return await this.handleNanoPayment(res, body, raw, nanoHash);
+    }
 
     // No payment attached: challenge with 402 + a fresh invoice.
     if (!invoiceId) {
@@ -299,13 +314,67 @@ export class Soq402Seller {
       state_index: chNow.state_index,
     });
 
-    // Run the inference (upstream or built-in mock).
+    await this.serveCompletion(res, body, raw, "Lightning", invoiceId, record.amount_sat);
+  }
+
+  /** Verify a caller-supplied Nano (XNO) block hash and serve the inference
+   *  exactly once when it is settled. Receive-only: the seller never needs
+   *  the buyer's keys — the Nano network itself is the oracle. */
+  private async handleNanoPayment(
+    res: ServerResponse,
+    body: ChatRequest,
+    raw: string,
+    nanoHash: string,
+  ): Promise<void> {
+    const verifier = this.opts.nanoVerifier!;
+    // One-shot redemption: a block hash is used at most once per seller.
+    if (this.issued.get(nanoHash)) return reject(res, 402, "nano block hash already redeemed");
+
+    const amount = this.quoteSat(body);
+    const verification = await verifier({
+      blockHash: nanoHash,
+      expectRaw: this.opts.nanoExpectRaw,
+    });
+    if (!verification.ok) return reject(res, 402, `nano: ${verification.reason ?? "payment not verified"}`);
+
+    this.issued.set(nanoHash, {
+      amount_sat: amount,
+      issued_at: Date.now(),
+      redeemed: true,
+    });
+    this.earnedSat += amount;
+    this.callsServed += 1;
+    this.bus.emit({
+      type: "paid",
+      invoice_id: nanoHash,
+      amount_sat: amount,
+      settle_ms: 0,
+      payer: "nano",
+      scheme: "nano",
+      block_hash: nanoHash.slice(0, 16),
+      explorer: verification.explorerUrl,
+    });
+
+    await this.serveCompletion(res, body, raw, "Nano", nanoHash, amount);
+  }
+
+  /** Run the inference (upstream or mock), sign a receipt and respond. Shared
+   *  by the Lightning and Nano payment paths so both settle exactly once. */
+  private async serveCompletion(
+    res: ServerResponse,
+    body: ChatRequest,
+    raw: string,
+    scheme: string,
+    paymentId: string,
+    amountSat: number,
+  ): Promise<void> {
     const t0 = Date.now();
     const out = await this.infer(body);
     const upstreamMs = Date.now() - t0;
     this.bus.emit({
       type: "inference",
-      invoice_id: invoiceId,
+      invoice_id: paymentId,
+      scheme,
       model: out.model,
       prompt_tokens: out.promptTokens,
       completion_tokens: out.completionTokens,
@@ -315,8 +384,8 @@ export class Soq402Seller {
     // Sign the receipt: this seller did this work for this payment.
     const receipt: Receipt = {
       v: 1,
-      invoice_id: invoiceId,
-      amount_sat: record.amount_sat,
+      invoice_id: paymentId,
+      amount_sat: amountSat,
       model: out.model,
       request_sha256: sha256Hex(raw),
       response_sha256: sha256Hex(out.content),
@@ -327,12 +396,12 @@ export class Soq402Seller {
     };
     const tSign = Date.now();
     const signed: SignedReceipt = signReceipt(receipt, this.keys.secretKey);
-    this.bus.emit({ type: "receipt", invoice_id: invoiceId, sign_ms: Date.now() - tSign });
+    this.bus.emit({ type: "receipt", invoice_id: paymentId, sign_ms: Date.now() - tSign });
 
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
       JSON.stringify({
-        id: `soq402-${invoiceId.slice(0, 12)}`,
+        id: `soq402-${paymentId.slice(0, 12)}`,
         object: "chat.completion",
         model: out.model,
         choices: [

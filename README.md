@@ -116,6 +116,35 @@ UPSTREAM_MODEL=your-model
 
 This demo is 402-native (HTTP 402 plus `soqln:` invoices); it does not implement the x402 protocol.
 
+## Optional: settle in Nano (XNO) instead of Lightning
+
+The seller also accepts **Nano (XNO)** as a second, receive-only settlement rail. Nano is a feeless, instant, single-block-final cryptocurrency — no Lightning channel needed, no bridge, no custodial hub. The buyer pays by sending XNO to the seller's Nano address and supplies the resulting block hash in the `X-Nano-Hash` header on the retry; the seller verifies it against the Nano network and serves the inference exactly once.
+
+Wire it up by passing a `nanoVerifier` to the seller (production uses the live RPC function; a test stub runs network-free):
+
+```ts
+import { Soq402Seller } from "./soq402/seller.js";
+import { verifyNanoPayment } from "./nano.js";
+
+const seller = await Soq402Seller.create({
+  lspUrl: process.env.LSP_URL!,
+  // Optional: accept Nano settlement too. The seller only ever receives.
+  nanoVerifier: verifyNanoPayment,
+  nanoExpectRaw: "100000000000000000000000000000000", // 0.0001 XNO
+});
+```
+
+A buyer retries a paid call like this:
+
+```bash
+curl -X POST http://localhost:4020/v1/chat/completions \
+  -H "content-type: application/json" \
+  -H "X-Nano-Hash: <the nano block hash the buyer just sent>" \
+  -d '{"messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+Tests (`npm test`) cover the Nano verifier and run entirely network-free using a stubbed verifier. In `verifyNanoPayment` the Nano network itself is the oracle: a block that is confirmed and unspent is settled — no facilitator, no USDC proxy.
+
 ## The honest boundary
 
 This template targets the current stagenet SDK (v0.1.0-alpha), which settles single-hop payments between an agent and the Lightning service provider — including agent-to-agent invoices, which the LSP hub settles custodially. True agent-to-agent routing across the network uses the SDK's HTLC and routing layer, which is built at the construction level and lights up as the forwarding endpoints ship. The LOCAL simulation mode is a teaching aid: it exercises the metering and balance logic without touching the network, and is clearly labelled as a simulation in the output. For real payments, point it at the stagenet LSP.
